@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Growtopia World Editor</title>
+    <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+    <div id="app">
+        <header id="toolbar">
+            <div class="brand">GT World Editor</div>
+            <div class="tools">
+                <button data-tool="place-fg" class="tool active" title="Place Foreground (B)">FG</button>
+                <button data-tool="place-bg" class="tool" title="Place Background (V)">BG</button>
+                <button data-tool="erase" class="tool" title="Erase (E)">Erase</button>
+                <button data-tool="fill" class="tool" title="Fill (F)">Fill</button>
+                <button data-tool="pick" class="tool" title="Eyedropper (I)">Pick</button>
+            </div>
+            <div class="actions">
+                <button id="btn-undo" title="Undo (Ctrl+Z)">Undo</button>
+                <button id="btn-redo" title="Redo (Ctrl+Y)">Redo</button>
+                <label class="chk"><input type="checkbox" id="chk-grid" checked /> Grid</label>
+                <label class="chk" title="Bedrock default di baris y 53-59"><input type="checkbox" id="chk-bedrock" checked /> Bedrock</label>
+                <button id="btn-fit" title="Fit world to screen (0)">Fit</button>
+                <span class="zoom-label" id="zoom-label">100%</span>
+            </div>
+            <div class="actions">
+                <button id="btn-clear">Clear</button>
+                <button id="btn-import">Import</button>
+                <button id="btn-export" class="primary">Export</button>
+                <input type="file" id="file-import" accept=".json,application/json" hidden />
+            </div>
+            <div class="world-name">
+                <span>World:</span>
+                <input id="world-name" value="START" maxlength="24" />
+            </div>
+        </header>
+        <main id="main">
+            <aside id="sidebar-left">
+                <input id="item-search" type="text" placeholder="Search item / ID... (min 2 char)" autocomplete="off" />
+                <div id="item-stats"></div>
+                <div id="item-list"></div>
+                <div id="item-status">Loading items...</div>
+            </aside>
+            <section id="canvas-wrap">
+                <canvas id="world-canvas"></canvas>
+                <div id="cursor-info"></div>
+            </section>
+            <aside id="sidebar-right">
+                <h3>Selected</h3>
+                <div id="selected-item" class="sel-box">
+                    <canvas width="32" height="32"></canvas>
+                    <div>
+                        <div id="sel-name">-</div>
+                        <div id="sel-id">-</div>
+                    </div>
+                </div>
+                <h3>Tile</h3>
+                <div id="tile-props">
+                    <div class="row"><span>x</span><b id="tp-x">-</b></div>
+                    <div class="row"><span>y</span><b id="tp-y">-</b></div>
+                    <div class="row"><span>foreground</span><b id="tp-fg">-</b></div>
+                    <div class="row"><span>background</span><b id="tp-bg">-</b></div>
+                    <div class="row"><span>index</span><b id="tp-idx">-</b></div>
+                </div>
+                <h3>World</h3>
+                <div class="row"><span>width</span><b>100</b></div>
+                <div class="row"><span>height</span><b>60</b></div>
+                <div class="row"><span>tiles</span><b>6000</b></div>
+                <div class="row"><span>format</span><b>GTPS3 JSON</b></div>
+                <div id="status-msg"></div>
+            </aside>
+        </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

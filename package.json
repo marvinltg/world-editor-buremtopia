@@ -1,0 +1,16 @@
+{
+    "name": "growtopia-world-editor",
+    "private": true,
+    "version": "0.1.0",
+    "type": "module",
+    "scripts": {
+        "gen": "node scripts/build-data.mjs",
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview"
+    },
+    "devDependencies": {
+        "typescript": "^5.7.0",
+        "vite": "^6.0.0"
+    }
+}

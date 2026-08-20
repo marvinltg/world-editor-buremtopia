@@ -1,0 +1,5 @@
+node_modules/
+scripts/serialize.test.mjs
+scripts/world.test.mjs
+project.md
+.gitignore

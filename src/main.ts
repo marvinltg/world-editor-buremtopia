@@ -1,0 +1,359 @@
+import { World, WORLD_H, WORLD_W, TILE_COUNT } from "./world";
+import { WorldRenderer, bindWorld } from "./renderer";
+import { loadItems, atlasUrlFor, itemById } from "./items";
+import { makeTileCanvas } from "./rttex";
+import { ItemBrowser } from "./ui";
+import { exportWorld, parseWorld, validateName } from "./serialize";
+import type { ItemEntry, Tool } from "./types";
+
+const root = document.getElementById("app")!;
+const world = new World();
+bindWorld(world);
+
+const renderer = new WorldRenderer(root.querySelector<HTMLCanvasElement>("#world-canvas")!);
+world.onChange((indices, full) => {
+    if (full) renderer.redrawAll(world);
+    else renderer.redrawTiles(indices);
+    updateButtons();
+});
+
+const statusEl = root.querySelector<HTMLElement>("#status-msg")!;
+let statusTimer: number | null = null;
+function status(msg: string, error = false): void {
+    statusEl.textContent = msg;
+    statusEl.classList.toggle("error", error);
+    if (statusTimer !== null) window.clearTimeout(statusTimer);
+    if (msg) statusTimer = window.setTimeout(() => { statusEl.textContent = ""; }, 5000);
+}
+
+let tool: Tool = "place-fg";
+let selected: ItemEntry | null = null;
+
+const selCanvas = root.querySelector<HTMLCanvasElement>("#selected-item canvas")!;
+const selName = root.querySelector<HTMLElement>("#sel-name")!;
+const selId = root.querySelector<HTMLElement>("#sel-id")!;
+const zoomLabel = root.querySelector<HTMLElement>("#zoom-label")!;
+const nameInput = root.querySelector<HTMLInputElement>("#world-name")!;
+const undoBtn = root.querySelector<HTMLButtonElement>("#btn-undo")!;
+const redoBtn = root.querySelector<HTMLButtonElement>("#btn-redo")!;
+
+function updateButtons(): void {
+    undoBtn.disabled = world.undoDepth === 0;
+    redoBtn.disabled = world.redoDepth === 0;
+    zoomLabel.textContent = `${renderer.zoomPercent}%`;
+}
+
+async function selectItem(item: ItemEntry): Promise<void> {
+    selected = item;
+    selName.textContent = item.name;
+    selId.textContent = `ID ${item.id} · ${item.layer === 1 ? "Background" : "Foreground"}`;
+    const url = atlasUrlFor(item.tex);
+    const ctx = selCanvas.getContext("2d")!;
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, 32, 32);
+    if (!url) {
+        ctx.fillStyle = `rgb(${item.color[0]},${item.color[1]},${item.color[2]})`;
+        ctx.fillRect(0, 0, 32, 32);
+        return;
+    }
+    const tile = await makeTileCanvas(item, url);
+    ctx.clearRect(0, 0, 32, 32);
+    ctx.drawImage(tile, 0, 0);
+    if (tool === "erase" || tool === "pick") setTool(item.layer === 1 ? "place-bg" : "place-fg");
+    renderer.requestRender();
+}
+
+const browser = new ItemBrowser(root as HTMLElement, item => { void selectItem(item); });
+
+function setTool(t: Tool): void {
+    tool = t;
+    for (const btn of root.querySelectorAll<HTMLElement>(".tool")) {
+        btn.classList.toggle("active", btn.dataset.tool === t);
+    }
+}
+
+for (const btn of root.querySelectorAll<HTMLElement>(".tool")) {
+    btn.addEventListener("click", () => setTool(btn.dataset.tool as Tool));
+}
+
+root.querySelector("#btn-undo")!.addEventListener("click", () => { if (world.undo()) world.flushEmit(); });
+root.querySelector("#btn-redo")!.addEventListener("click", () => { if (world.redo()) world.flushEmit(); });
+root.querySelector("#chk-grid")!.addEventListener("change", e => {
+    renderer.setGrid((e.target as HTMLInputElement).checked);
+});
+
+const BEDROCK_ID = 8;
+const BEDROCK_ROWS: [number, number] = [53, 59];
+const bedrockChk = root.querySelector<HTMLInputElement>("#chk-bedrock")!;
+
+function applyBedrock(on: boolean, recordUndo: boolean): number {
+    if (recordUndo) world.beginOp();
+    let changed = 0;
+    for (let y = BEDROCK_ROWS[0]; y <= BEDROCK_ROWS[1]; y++) {
+        for (let x = 0; x < WORLD_W; x++) {
+            const i = y * WORLD_W + x;
+            if (on) {
+                if (world.fg[i] !== 0 && world.fg[i] !== BEDROCK_ID) continue;
+                if (world.fg[i] === BEDROCK_ID) continue;
+                world.setTile(i, 0, BEDROCK_ID);
+                changed++;
+            } else {
+                if (world.fg[i] !== BEDROCK_ID) continue;
+                world.setTile(i, 0, 0);
+                changed++;
+            }
+        }
+    }
+    if (recordUndo) {
+        if (!world.endOp()) changed = 0;
+    }
+    world.flushEmit();
+    return changed;
+}
+
+bedrockChk.addEventListener("change", () => {
+    const changed = applyBedrock(bedrockChk.checked, true);
+    status(bedrockChk.checked ? `Bedrock default dipasang (${changed} tile, y ${BEDROCK_ROWS[0]}-${BEDROCK_ROWS[1]})` : "Bedrock default dihapus");
+});
+root.querySelector("#btn-fit")!.addEventListener("click", () => { renderer.fitToScreen(); updateButtons(); });
+root.querySelector("#btn-clear")!.addEventListener("click", () => {
+    if (!confirm("Hapus semua tile?")) return;
+    world.clear();
+    status("World dibersihkan");
+});
+
+const exportBtn = root.querySelector("#btn-export")!;
+exportBtn.addEventListener("click", () => {
+    const name = nameInput.value.trim().toUpperCase();
+    const err = validateName(name);
+    if (err) { status(err, true); nameInput.focus(); return; }
+    try {
+        const { blob, filename } = exportWorld(
+            { name, fg: world.fg, bg: world.bg, extra: world.extra },
+            { worldName: name }
+        );
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        status(`Exported ${filename} (${(blob.size / 1024).toFixed(1)} KB, ${TILE_COUNT} tile)`);
+    } catch (e) {
+        status((e as Error).message, true);
+    }
+});
+
+const importInput = root.querySelector<HTMLInputElement>("#file-import")!;
+root.querySelector("#btn-import")!.addEventListener("click", () => importInput.click());
+importInput.addEventListener("change", async () => {
+    const file = importInput.files?.[0];
+    importInput.value = "";
+    if (!file) return;
+    try {
+        const text = await file.text();
+        const { state, stats } = parseWorld(text);
+        world.replaceWhole(state.fg, state.bg, state.extra, state.name || file.name.replace(/_?\.json$/i, "").toUpperCase());
+        const fromFile = file.name.replace(/_?\.json$/i, "");
+        if (/^[A-Za-z0-9_-]+$/.test(fromFile) && fromFile.length <= 24) nameInput.value = fromFile.toUpperCase();
+        status(`Imported ${file.name}: ${stats.fgCount} fg, ${stats.bgCount} bg, ${stats.extraCount} extra`);
+    } catch (e) {
+        status((e as Error).message, true);
+    }
+});
+
+const canvas = renderer.canvas;
+let spaceDown = false;
+let panning = false;
+let painting = false;
+let lastPan: { x: number; y: number } | null = null;
+let hoverTile: { x: number; y: number; i: number } | null = null;
+let lastPainted = -1;
+
+const tpX = root.querySelector<HTMLElement>("#tp-x")!;
+const tpY = root.querySelector<HTMLElement>("#tp-y")!;
+const tpFg = root.querySelector<HTMLElement>("#tp-fg")!;
+const tpBg = root.querySelector<HTMLElement>("#tp-bg")!;
+const tpIdx = root.querySelector<HTMLElement>("#tp-idx")!;
+
+function describeId(id: number): string {
+    if (!id) return "-";
+    const it = itemById(id);
+    return it ? `${it.name} (${id})` : `? (${id})`;
+}
+
+function updateTileInfo(i: number | null): void {
+    if (i === null || i < 0) {
+        tpX.textContent = tpY.textContent = tpFg.textContent = tpBg.textContent = tpIdx.textContent = "-";
+        return;
+    }
+    tpX.textContent = String(i % WORLD_W);
+    tpY.textContent = String((i / WORLD_W) | 0);
+    tpFg.textContent = describeId(world.fg[i]);
+    tpBg.textContent = describeId(world.bg[i]);
+    tpIdx.textContent = String(i);
+}
+
+function applyTool(i: number): void {
+    if (tool === "place-fg" || tool === "place-bg") {
+        if (!selected) { status("Pilih item dulu", true); return; }
+        const layer = tool === "place-bg" ? 1 : 0;
+        if (selected.layer !== layer) {
+            status(`${selected.name} adalah item ${selected.layer === 1 ? "background, pakai tool BG" : "foreground, pakai tool FG"}`, true);
+            return;
+        }
+        if (world.paint(i, "place", layer, selected.id)) lastPainted = i;
+    } else if (tool === "erase") {
+        if (world.paint(i, "erase", 0, 0)) lastPainted = i;
+    } else if (tool === "pick") {
+        const fgId = world.fg[i];
+        const bgId = world.bg[i];
+        const target = fgId || bgId;
+        if (!target) { status("Tile kosong", true); return; }
+        const item = itemById(target);
+        if (item) {
+            void selectItem(item);
+            browser.markSelected(item.id);
+            setTool(item.layer === 1 ? "place-bg" : "place-fg");
+            status(`Dipilih: ${item.name}`);
+        }
+    }
+}
+
+canvas.addEventListener("pointerdown", e => {
+    canvas.setPointerCapture(e.pointerId);
+    if (e.button === 1 || spaceDown) {
+        panning = true;
+        lastPan = { x: e.clientX, y: e.clientY };
+        canvas.style.cursor = "grabbing";
+        return;
+    }
+    if (e.button !== 0) return;
+    const t = renderer.clientToTile(e.clientX, e.clientY);
+    if (!t) return;
+    if (tool === "fill") {
+        if (!selected) { status("Pilih item dulu", true); return; }
+        const layer = selected.layer;
+        world.beginOp();
+        world.fill(t.i, layer, selected.id);
+        world.endOp();
+        world.flushEmit();
+        return;
+    }
+    if (tool === "pick") {
+        renderer.setSelected(t.i);
+        updateTileInfo(t.i);
+        applyTool(t.i);
+        return;
+    }
+    painting = true;
+    lastPainted = -1;
+    renderer.setSelected(t.i);
+    updateTileInfo(t.i);
+    world.beginOp();
+    applyTool(t.i);
+});
+
+canvas.addEventListener("pointermove", e => {
+    if (panning && lastPan) {
+        renderer.panBy(e.clientX - lastPan.x, e.clientY - lastPan.y);
+        lastPan = { x: e.clientX, y: e.clientY };
+        updateButtons();
+        return;
+    }
+    const t = renderer.clientToTile(e.clientX, e.clientY);
+    hoverTile = t;
+    updateTileInfo(t ? t.i : null);
+    renderer.setHover(
+        t
+            ? {
+                  x: t.x,
+                  y: t.y,
+                  item: tool === "place-fg" || tool === "place-bg" ? selected : null,
+                  tool
+              }
+            : null
+    );
+    if (painting && t && t.i !== lastPainted) {
+        applyTool(t.i);
+    }
+});
+
+function endStroke(): void {
+    if (painting) {
+        painting = false;
+        world.endOp();
+        world.flushEmit();
+    }
+    if (panning) {
+        panning = false;
+        lastPan = null;
+        canvas.style.cursor = "default";
+    }
+}
+canvas.addEventListener("pointerup", endStroke);
+canvas.addEventListener("pointerleave", () => {
+    renderer.setHover(null);
+    endStroke();
+});
+
+canvas.addEventListener(
+    "wheel",
+    e => {
+        e.preventDefault();
+        const factor = Math.exp(-e.deltaY * 0.0015);
+        renderer.zoomAt(factor, e.clientX, e.clientY);
+        updateButtons();
+    },
+    { passive: false }
+);
+
+window.addEventListener("keydown", e => {
+    if (e.target instanceof HTMLInputElement) return;
+    if (e.code === "Space") {
+        spaceDown = true;
+        canvas.style.cursor = "grab";
+        return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) { if (world.redo()) world.flushEmit(); }
+        else if (world.undo()) world.flushEmit();
+        return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        if (world.redo()) world.flushEmit();
+        return;
+    }
+    const map: Record<string, Tool> = { b: "place-fg", v: "place-bg", e: "erase", f: "fill", i: "pick" };
+    const t = map[e.key.toLowerCase()];
+    if (t) setTool(t);
+    if (e.key === "0") { renderer.fitToScreen(); updateButtons(); }
+});
+window.addEventListener("keyup", e => {
+    if (e.code === "Space") {
+        spaceDown = false;
+        if (!panning) canvas.style.cursor = "default";
+    }
+});
+
+async function boot(): Promise<void> {
+    try {
+        browser.setStatus("Mengunduh index item...");
+        const { items } = await loadItems(m => browser.setStatus(m));
+        browser.setStats(items.length);
+        browser.search("");
+        applyBedrock(true, false);
+        renderer.fitToScreen();
+        updateButtons();
+        const dirt = itemById(2);
+        if (dirt) void selectItem(dirt);
+        status(`Siap: ${items.length} item placeable, world ${WORLD_W}x${WORLD_H}, bedrock y ${BEDROCK_ROWS[0]}-${BEDROCK_ROWS[1]}`);
+    } catch (e) {
+        browser.setStatus("Gagal memuat: " + (e as Error).message);
+        status((e as Error).message, true);
+    }
+}
+
+void boot();
