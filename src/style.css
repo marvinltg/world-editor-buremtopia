@@ -56,6 +56,19 @@ button.active { background: #33415c; border-color: var(--blue); color: #fff; }
 button.primary { background: #2b5d2f; border-color: #3f8a44; color: #eaffea; }
 button.primary:hover { background: #337038; }
 .chk { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+.chk.brush { gap: 6px; }
+.chk.brush #brush-val {
+    color: var(--text);
+    font-weight: 600;
+    min-width: 18px;
+    text-align: center;
+}
+input[type="range"] {
+    width: 90px;
+    accent-color: var(--accent);
+    cursor: pointer;
+    vertical-align: middle;
+}
 .zoom-label { color: var(--muted); min-width: 44px; text-align: center; }
 
 #main { flex: 1; display: flex; min-height: 0; }

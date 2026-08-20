@@ -18,6 +18,7 @@ interface HoverState {
     y: number;
     item: ItemEntry | null;
     tool: string;
+    size: number;
 }
 
 export class WorldRenderer {
@@ -127,19 +128,30 @@ export class WorldRenderer {
             ctx.strokeRect((sx * TILE - offX) * zoom, (sy * TILE - offY) * zoom, TILE * zoom, TILE * zoom);
         }
         if (this.hover) {
-            const hx = this.hover.x * TILE;
-            const hy = this.hover.y * TILE;
+            const size = Math.max(1, this.hover.size);
+            const half = Math.floor((size - 1) / 2);
+            const bx = this.hover.x - half;
+            const by = this.hover.y - half;
+            const hx = bx * TILE;
+            const hy = by * TILE;
+            const w = size * TILE;
             if (this.hover.tool === "erase") {
                 ctx.strokeStyle = "rgba(255,80,80,0.9)";
                 ctx.lineWidth = 2;
-                ctx.strokeRect((hx - offX) * zoom, (hy - offY) * zoom, TILE * zoom, TILE * zoom);
+                ctx.strokeRect((hx - offX) * zoom, (hy - offY) * zoom, w * zoom, w * zoom);
             } else if (this.hover.item) {
+                ctx.fillStyle = "rgba(255,255,255,0.10)";
+                ctx.fillRect((hx - offX) * zoom, (hy - offY) * zoom, w * zoom, w * zoom);
                 ctx.globalAlpha = 0.55;
-                this.drawItemAt(ctx, this.hover.item, (hx - offX) * zoom, (hy - offY) * zoom, TILE * zoom);
+                this.drawItemAt(ctx, this.hover.item, (hx - offX) * zoom, (hy - offY) * zoom, w * zoom);
                 ctx.globalAlpha = 1;
                 ctx.strokeStyle = "rgba(255,255,255,0.5)";
                 ctx.lineWidth = 1;
-                ctx.strokeRect((hx - offX) * zoom, (hy - offY) * zoom, TILE * zoom, TILE * zoom);
+                ctx.strokeRect((hx - offX) * zoom, (hy - offY) * zoom, w * zoom, w * zoom);
+            } else {
+                ctx.strokeStyle = "rgba(255,255,255,0.5)";
+                ctx.lineWidth = 1;
+                ctx.strokeRect((hx - offX) * zoom, (hy - offY) * zoom, w * zoom, w * zoom);
             }
         }
     }

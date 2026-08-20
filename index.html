@@ -20,6 +20,10 @@
             <div class="actions">
                 <button id="btn-undo" title="Undo (Ctrl+Z)">Undo</button>
                 <button id="btn-redo" title="Redo (Ctrl+Y)">Redo</button>
+                <label class="chk brush" title="Ukuran brush (1-16)">
+                    Brush <span id="brush-val">1</span>
+                    <input type="range" id="brush-size" min="1" max="16" step="1" value="1" />
+                </label>
                 <label class="chk"><input type="checkbox" id="chk-grid" checked /> Grid</label>
                 <label class="chk" title="Bedrock default di baris y 53-59"><input type="checkbox" id="chk-bedrock" checked /> Bedrock</label>
                 <button id="btn-fit" title="Fit world to screen (0)">Fit</button>

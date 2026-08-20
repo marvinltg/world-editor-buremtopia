@@ -28,6 +28,16 @@ function status(msg: string, error = false): void {
 
 let tool: Tool = "place-fg";
 let selected: ItemEntry | null = null;
+let brushSize = 1;
+const brushInput = document.getElementById("brush-size") as HTMLInputElement;
+const brushVal = document.getElementById("brush-val")!;
+brushInput.addEventListener("input", () => {
+    let v = parseInt(brushInput.value, 10);
+    if (!Number.isFinite(v)) v = 1;
+    brushSize = Math.min(16, Math.max(1, v));
+    brushVal.textContent = String(brushSize);
+    renderer.requestRender();
+});
 
 const selCanvas = root.querySelector<HTMLCanvasElement>("#selected-item canvas")!;
 const selName = root.querySelector<HTMLElement>("#sel-name")!;
@@ -194,17 +204,44 @@ function updateTileInfo(i: number | null): void {
     tpIdx.textContent = String(i);
 }
 
+function forEachBrushTile(i: number, fn: (idx: number) => void): void {
+    if (brushSize <= 1) {
+        fn(i);
+        return;
+    }
+    const half = Math.floor((brushSize - 1) / 2);
+    const cx = i % WORLD_W;
+    const cy = (i / WORLD_W) | 0;
+    for (let dy = -half; dy < brushSize - half; dy++) {
+        for (let dx = -half; dx < brushSize - half; dx++) {
+            const x = cx + dx;
+            const y = cy + dy;
+            if (x < 0 || x >= WORLD_W || y < 0 || y >= WORLD_H) continue;
+            fn(y * WORLD_W + x);
+        }
+    }
+}
+
 function applyTool(i: number): void {
     if (tool === "place-fg" || tool === "place-bg") {
         if (!selected) { status("Pilih item dulu", true); return; }
+        const item = selected;
         const layer = tool === "place-bg" ? 1 : 0;
-        if (selected.layer !== layer) {
-            status(`${selected.name} adalah item ${selected.layer === 1 ? "background, pakai tool BG" : "foreground, pakai tool FG"}`, true);
+        if (item.layer !== layer) {
+            status(`${item.name} adalah item ${item.layer === 1 ? "background, pakai tool BG" : "foreground, pakai tool FG"}`, true);
             return;
         }
-        if (world.paint(i, "place", layer, selected.id)) lastPainted = i;
+        let changed = false;
+        forEachBrushTile(i, idx => {
+            if (world.paint(idx, "place", layer, item.id)) changed = true;
+        });
+        if (changed) lastPainted = i;
     } else if (tool === "erase") {
-        if (world.paint(i, "erase", 0, 0)) lastPainted = i;
+        let changed = false;
+        forEachBrushTile(i, idx => {
+            if (world.paint(idx, "erase", 0, 0)) changed = true;
+        });
+        if (changed) lastPainted = i;
     } else if (tool === "pick") {
         const fgId = world.fg[i];
         const bgId = world.bg[i];
@@ -270,7 +307,8 @@ canvas.addEventListener("pointermove", e => {
                   x: t.x,
                   y: t.y,
                   item: tool === "place-fg" || tool === "place-bg" ? selected : null,
-                  tool
+                  tool,
+                  size: brushSize
               }
             : null
     );
