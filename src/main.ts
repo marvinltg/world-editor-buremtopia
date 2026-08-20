@@ -26,6 +26,26 @@ function status(msg: string, error = false): void {
     if (msg) statusTimer = window.setTimeout(() => { statusEl.textContent = ""; }, 5000);
 }
 
+const toastEl = root.querySelector<HTMLElement>("#canvas-toast")!;
+let toastTimer: number | null = null;
+function toast(msg: string): void {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    if (toastTimer !== null) window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => toastEl.classList.remove("show"), 1800);
+}
+let lastFail = "";
+let lastFailAt = 0;
+function fail(msg: string): void {
+    status(msg, true);
+    const now = Date.now();
+    if (msg !== lastFail || now - lastFailAt > 1500) {
+        toast(msg);
+        lastFail = msg;
+        lastFailAt = now;
+    }
+}
+
 let tool: Tool = "place-fg";
 let selected: ItemEntry | null = null;
 let brushSize = 1;
@@ -103,11 +123,13 @@ function applyBedrock(on: boolean, recordUndo: boolean): number {
         for (let x = 0; x < WORLD_W; x++) {
             const i = y * WORLD_W + x;
             if (on) {
+                world.setLocked(i, true);
                 if (world.fg[i] !== 0 && world.fg[i] !== BEDROCK_ID) continue;
                 if (world.fg[i] === BEDROCK_ID) continue;
                 world.setTile(i, 0, BEDROCK_ID);
                 changed++;
             } else {
+                world.setLocked(i, false);
                 if (world.fg[i] !== BEDROCK_ID) continue;
                 world.setTile(i, 0, 0);
                 changed++;
@@ -223,12 +245,16 @@ function forEachBrushTile(i: number, fn: (idx: number) => void): void {
 }
 
 function applyTool(i: number): void {
+    if (world.isLocked(i)) {
+        fail(`Tile (${i % WORLD_W}, ${(i / WORLD_W) | 0}) terkunci: bedrock default aktif, matikan toggle Bedrock untuk mengubahnya`);
+        return;
+    }
     if (tool === "place-fg" || tool === "place-bg") {
         if (!selected) { status("Pilih item dulu", true); return; }
         const item = selected;
         const layer = tool === "place-bg" ? 1 : 0;
         if (item.layer !== layer) {
-            status(`${item.name} adalah item ${item.layer === 1 ? "background, pakai tool BG" : "foreground, pakai tool FG"}`, true);
+            fail(`${item.name} adalah item ${item.layer === 1 ? "background" : "foreground"} — pakai tool ${item.layer === 1 ? "BG" : "FG"}`);
             return;
         }
         let changed = false;
@@ -246,7 +272,7 @@ function applyTool(i: number): void {
         const fgId = world.fg[i];
         const bgId = world.bg[i];
         const target = fgId || bgId;
-        if (!target) { status("Tile kosong", true); return; }
+        if (!target) { fail("Tile kosong, tidak ada item untuk dipilih"); return; }
         const item = itemById(target);
         if (item) {
             void selectItem(item);
@@ -269,8 +295,12 @@ canvas.addEventListener("pointerdown", e => {
     const t = renderer.clientToTile(e.clientX, e.clientY);
     if (!t) return;
     if (tool === "fill") {
-        if (!selected) { status("Pilih item dulu", true); return; }
+        if (!selected) { fail("Pilih item dulu"); return; }
         const layer = selected.layer;
+        if (world.isLocked(t.i)) {
+            fail(`Tile (${t.x}, ${t.y}) terkunci: bedrock default aktif, matikan toggle Bedrock untuk mengubahnya`);
+            return;
+        }
         world.beginOp();
         world.fill(t.i, layer, selected.id);
         world.endOp();

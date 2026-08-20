@@ -33,6 +33,7 @@ export class World {
     private currentOps: TileOp[] | null = null;
     private listeners: WorldListener[] = [];
     private dirtySinceFlush = new Set<number>();
+    private locked = new Set<number>();
 
     constructor() {
         this.fg = new Uint16Array(TILE_COUNT);
@@ -42,6 +43,15 @@ export class World {
 
     onChange(fn: WorldListener): void {
         this.listeners.push(fn);
+    }
+
+    isLocked(i: number): boolean {
+        return this.locked.has(i);
+    }
+
+    setLocked(i: number, on: boolean): void {
+        if (on) this.locked.add(i);
+        else this.locked.delete(i);
     }
 
     private emit(indices: number[], full = false): void {
@@ -86,6 +96,7 @@ export class World {
     }
 
     paint(i: number, tool: "place" | "erase", layer: 0 | 1, value: number): boolean {
+        if (this.locked.has(i)) return false;
         if (tool === "erase") {
             if (this.fg[i] === 0 && this.bg[i] === 0 && !this.extra.has(i)) return false;
             this.setTile(i, 0, 0);
@@ -101,6 +112,7 @@ export class World {
     }
 
     fill(start: number, layer: 0 | 1, value: number): number[] {
+        if (this.locked.has(start)) return [];
         const arr = layer === 0 ? this.fg : this.bg;
         const target = arr[start];
         if (target === value) return [];
@@ -110,7 +122,7 @@ export class World {
         seen[start] = 1;
         while (stack.length) {
             const i = stack.pop()!;
-            if (arr[i] !== target) continue;
+            if (arr[i] !== target || this.locked.has(i)) continue;
             this.setTile(i, layer, value);
             changed.push(i);
             const x = i % WORLD_W;
@@ -126,10 +138,11 @@ export class World {
     clear(): void {
         this.beginOp();
         for (let i = 0; i < TILE_COUNT; i++) {
+            if (this.locked.has(i)) continue;
             this.setTile(i, 0, 0);
             this.setTile(i, 1, 0);
+            this.extra.delete(i);
         }
-        this.extra.clear();
         this.endOp();
         this.flushEmit();
     }
@@ -166,6 +179,7 @@ export class World {
         this.bg = bg;
         this.extra = extra;
         this.name = name;
+        this.locked.clear();
         this.undoStack.length = 0;
         this.redoStack.length = 0;
         this.emit([], true);

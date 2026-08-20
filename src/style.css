@@ -134,6 +134,31 @@ input[type="range"] {
 #canvas-wrap { flex: 1; position: relative; min-width: 0; }
 #world-canvas { width: 100%; height: 100%; display: block; touch-action: none; }
 
+#canvas-toast {
+    position: absolute;
+    top: 18px;
+    left: 50%;
+    transform: translate(-50%, -10px);
+    background: rgba(126, 26, 26, 0.94);
+    color: #ffecec;
+    border: 1px solid #d9534f;
+    border-radius: 8px;
+    padding: 9px 18px;
+    font-size: 13px;
+    font-weight: 500;
+    max-width: 75%;
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+    z-index: 10;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+}
+#canvas-toast.show {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
 #sidebar-right {
     width: 230px;
     background: var(--panel);
