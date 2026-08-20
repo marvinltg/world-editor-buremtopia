@@ -98,6 +98,7 @@ export class ItemBrowser {
 
             const thumbWrap = document.createElement("div");
             thumbWrap.className = "thumb";
+            thumbWrap.dataset.itemId = String(it.id);
             thumbWrap.style.background = `rgb(${it.color[0]},${it.color[1]},${it.color[2]})`;
             const cv = document.createElement("canvas");
             cv.width = 32;
