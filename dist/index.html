@@ -3,37 +3,47 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Growtopia World Editor</title>
-  <script type="module" crossorigin src="./assets/index-DQSwtHEz.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-B-5rQfHx.css">
+    <title>Growtopia World Planner</title>
+  <script type="module" crossorigin src="./assets/index-Ci2OQ46l.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-B2pVcZs_.css">
 </head>
 <body>
     <div id="app">
         <header id="toolbar">
-            <div class="brand">GT World Editor</div>
+            <div class="brand">Growtopia World Planner</div>
             <div class="tools">
-                <button data-tool="place-fg" class="tool active" title="Place Foreground (B)">FG</button>
-                <button data-tool="place-bg" class="tool" title="Place Background (V)">BG</button>
-                <button data-tool="erase" class="tool" title="Erase (E)">Erase</button>
-                <button data-tool="fill" class="tool" title="Fill (F)">Fill</button>
-                <button data-tool="pick" class="tool" title="Eyedropper (I)">Pick</button>
+                <button data-tool="place-fg" class="tool active" title="Place Foreground (B)" aria-label="Place Foreground">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+                </button>
+                <button data-tool="place-bg" class="tool" title="Place Background (V)" aria-label="Place Background">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/><rect x="5" y="5" width="4" height="4" rx="1" opacity="0.5"/><rect x="15" y="15" width="4" height="4" rx="1" opacity="0.5"/></svg>
+                </button>
+                <button data-tool="erase" class="tool" title="Erase (E)" aria-label="Erase">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H7"/><path d="M14 2v4a2 2 0 0 1-2 2H4"/><path d="M9 10v9"/><path d="M15 10v9"/><path d="M4 18h16"/><path d="M18 2a2 2 0 0 1 2 2v12c0 .6-.2 1.1-.5 1.5L6 8.5 4 16"/></svg>
+                </button>
+                <button data-tool="fill" class="tool" title="Fill (F)" aria-label="Fill">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 11v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M21 10V5a2 2 0 0 0-2-2h-4"/><path d="M3 16v-4a2 2 0 0 1 2-2h14"/><path d="M17 8h2a2 2 0 0 1 2 2v4"/></svg>
+                </button>
+                <button data-tool="pick" class="tool" title="Eyedropper (I)" aria-label="Eyedropper">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></svg>
+                </button>
             </div>
             <div class="actions" id="erase-options" style="display: none; align-items: center; gap: 8px;">
-                <label class="chk" title="Hapus Foreground"><input type="checkbox" id="erase-fg" checked /> FG</label>
-                <label class="chk" title="Hapus Background"><input type="checkbox" id="erase-bg" checked /> BG</label>
+                <label class="chk" title="Hapus Foreground"><input type="checkbox" id="erase-fg" checked /><span class="chk-box"></span> FG</label>
+                <label class="chk" title="Hapus Background"><input type="checkbox" id="erase-bg" checked /><span class="chk-box"></span> BG</label>
             </div>
             <div class="actions">
                 <button id="btn-undo" title="Undo (Ctrl+Z)">Undo</button>
                 <button id="btn-redo" title="Redo (Ctrl+Y)">Redo</button>
-                <label class="chk" title="Ukuran brush (1-16)">
+                <label class="chk brush" title="Ukuran brush (1-16)">
                     Brush <span id="brush-val">1</span>
                     <input type="range" id="brush-size" min="1" max="16" step="1" value="1" />
                 </label>
-                <label class="chk"><input type="checkbox" id="chk-grid" checked /> Grid</label>
-                <label class="chk" title="Bedrock default di baris y 53-59"><input type="checkbox" id="chk-bedrock" checked /> Bedrock</label>
-                <label class="chk" title="Kunci tile yang sudah punya desain (FG/BG) agar tidak tertimpa"><input type="checkbox" id="chk-lock-tiles" /> Lock Tiles</label>
-                <label class="chk" title="Tampilkan Foreground"><input type="checkbox" id="chk-show-fg" checked /> FG</label>
-                <label class="chk" title="Tampilkan Background"><input type="checkbox" id="chk-show-bg" checked /> BG</label>
+                <label class="chk"><input type="checkbox" id="chk-grid" checked /><span class="chk-box"></span> Grid</label>
+                <label class="chk" title="Bedrock default di baris y 53-59"><input type="checkbox" id="chk-bedrock" checked /><span class="chk-box"></span> Bedrock</label>
+                <label class="chk" title="Kunci tile yang sudah punya desain (FG/BG) agar tidak tertimpa"><input type="checkbox" id="chk-lock-tiles" /><span class="chk-box"></span> Lock</label>
+                <label class="chk" title="Tampilkan Foreground"><input type="checkbox" id="chk-show-fg" checked /><span class="chk-box"></span> FG</label>
+                <label class="chk" title="Tampilkan Background"><input type="checkbox" id="chk-show-bg" checked /><span class="chk-box"></span> BG</label>
                 <button id="btn-fit" title="Fit world to screen (0)">Fit</button>
                 <span class="zoom-label" id="zoom-label">100%</span>
             </div>

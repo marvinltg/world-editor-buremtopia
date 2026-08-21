@@ -17,6 +17,21 @@ world.onChange((indices, full) => {
     updateButtons();
 });
 
+function hasUnsavedChanges(): boolean {
+    if (world.undoDepth > 0 || world.redoDepth > 0) return true;
+    for (let i = 0; i < TILE_COUNT; i++) {
+        if (world.fg[i] !== 0 || world.bg[i] !== 0) return true;
+    }
+    return false;
+}
+
+window.addEventListener("beforeunload", (e) => {
+    if (hasUnsavedChanges()) {
+        e.preventDefault();
+        e.returnValue = "";
+    }
+});
+
 const statusEl = root.querySelector<HTMLElement>("#status-msg")!;
 let statusTimer: number | null = null;
 function status(msg: string, error = false): void {
