@@ -65,14 +65,12 @@ const selName = root.querySelector<HTMLElement>("#sel-name")!;
 const selId = root.querySelector<HTMLElement>("#sel-id")!;
 const zoomLabel = root.querySelector<HTMLElement>("#zoom-label")!;
 const nameInput = root.querySelector<HTMLInputElement>("#world-name")!;
-const undoBtn = root.querySelector<HTMLButtonElement>("#btn-undo")!;
+    const undoBtn = root.querySelector<HTMLButtonElement>("#btn-undo")!;
+    const redoBtn = root.querySelector<HTMLButtonElement>("#btn-redo")!;
+    const placedItemsPanel = document.createElement("div");
+    placedItemsPanel.id = "placed-items-panel";
+    placedItemsPanel.className = "properties-panel";
 const redoBtn = root.querySelector<HTMLButtonElement>("#btn-redo")!;
-const eraseFgChk = root.querySelector<HTMLInputElement>("#erase-fg")!;
-const eraseBgChk = root.querySelector<HTMLInputElement>("#erase-bg")!;
-const eraseOptions = root.querySelector<HTMLElement>("#erase-options")!;
-const lockTilesChk = root.querySelector<HTMLInputElement>("#chk-lock-tiles")!;
-const showFgChk = root.querySelector<HTMLInputElement>("#chk-show-fg")!;
-const showBgChk = root.querySelector<HTMLInputElement>("#chk-show-bg")!;
 
 function updateButtons(): void {
     undoBtn.disabled = world.undoDepth === 0;
@@ -80,71 +78,40 @@ function updateButtons(): void {
     zoomLabel.textContent = `${renderer.zoomPercent}%`;
 }
 
-interface UsedItemInfo {
-    item: ItemEntry;
-    count: number;
-    layers: Set<0 | 1>;
-}
-
-function getUsedItemsWithCounts(): UsedItemInfo[] {
-    const counts = new Map<number, { count: number; layers: Set<0 | 1> }>();
-    
-    for (let i = 0; i < TILE_COUNT; i++) {
-        const fgId = world.fg[i];
-        const bgId = world.bg[i];
-        
-        if (fgId !== 0) {
-            const entry = counts.get(fgId) || { count: 0, layers: new Set<0 | 1>() };
-            entry.count++;
-            entry.layers.add(0);
-            counts.set(fgId, entry);
-        }
-        if (bgId !== 0) {
-            const entry = counts.get(bgId) || { count: 0, layers: new Set<0 | 1>() };
-            entry.count++;
-            entry.layers.add(1);
-            counts.set(bgId, entry);
-        }
-    }
-    
-    const result: UsedItemInfo[] = [];
-    for (const [id, data] of counts) {
-        const item = itemById(id);
-        if (item) {
-            result.push({ item, count: data.count, layers: data.layers });
-        }
-    }
-    
-    result.sort((a, b) => b.count - a.count);
-    return result;
-}
-
 function getUsedItems(): Map<number, ItemEntry> {
     const used = new Map<number, ItemEntry>();
-    for (const info of getUsedItemsWithCounts()) {
-        used.set(info.item.id, info.item);
+    for (const [tileIdx, itemIds] of placedItems) {
+        for (const id of itemIds) {
+            const item = itemById(id);
+            if (item && !used.has(id)) {
+                used.set(id, item);
+            }
+        }
     }
     return used;
 }
 
-async function renderItemThumb(item: ItemEntry, size: number): Promise<HTMLCanvasElement> {
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext("2d")!;
-    ctx.imageSmoothingEnabled = false;
-    const bg = `rgb(${item.color[0]},${item.color[1]},${item.color[2]})`;
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, size, size);
-    const url = atlasUrlFor(item.tex);
-    if (url) {
-        try {
-            const tile = await makeTileCanvas(item, url);
-            ctx.clearRect(0, 0, size, size);
-            ctx.drawImage(tile, 0, 0, size, size);
-        } catch { /* keep placeholder */ }
+function updatePlacedItemsPanel(): void {
+    const used = getUsedItems();
+    const panelEl = root.querySelector<HTMLElement>("#used-items-panel");
+    if (!panelEl) return;
+    
+    const items = Array.from(used.values());
+    if (items.length === 0) {
+        panelEl.innerHTML = `<div class="empty-state">Memilih item dulu untuk menampilkan di sini</div>`;
+        return;
     }
-    return canvas;
+    
+    let html = `<div><strong>Used Items (${items.length})</strong></div>`;
+    for (const item of items) {
+        const url = atlasUrlFor(item.tex);
+        const bg = `rgb(${item.color[0]},${item.color[1]},${item.color[2]})`;
+        html += `
+            <div class="item-card-small" title="${item.name} (ID ${item.id})" style="background: ${bg}">
+                ${item.id}
+            </div>`;
+    }
+    panelEl.innerHTML = html;
 }
 
 async function selectItem(item: ItemEntry): Promise<void> {
@@ -174,7 +141,6 @@ function setTool(t: Tool): void {
     for (const btn of root.querySelectorAll<HTMLElement>(".tool")) {
         btn.classList.toggle("active", btn.dataset.tool === t);
     }
-    eraseOptions.style.display = t === "erase" ? "flex" : "none";
 }
 
 for (const btn of root.querySelectorAll<HTMLElement>(".tool")) {
@@ -185,14 +151,6 @@ root.querySelector("#btn-undo")!.addEventListener("click", () => { if (world.und
 root.querySelector("#btn-redo")!.addEventListener("click", () => { if (world.redo()) world.flushEmit(); });
 root.querySelector("#chk-grid")!.addEventListener("change", e => {
     renderer.setGrid((e.target as HTMLInputElement).checked);
-});
-
-showFgChk.addEventListener("change", e => {
-    renderer.setShowFg((e.target as HTMLInputElement).checked);
-});
-
-showBgChk.addEventListener("change", e => {
-    renderer.setShowBg((e.target as HTMLInputElement).checked);
 });
 
 const BEDROCK_ID = 8;
@@ -332,8 +290,6 @@ function applyTool(i: number): void {
         fail(`Tile (${i % WORLD_W}, ${(i / WORLD_W) | 0}) terkunci: bedrock default aktif, matikan toggle Bedrock untuk mengubahnya`);
         return;
     }
-    const lockTiles = lockTilesChk?.checked ?? false;
-    
     if (tool === "place-fg" || tool === "place-bg") {
         if (!selected) { status("Pilih item dulu", true); return; }
         const item = selected;
@@ -344,56 +300,22 @@ function applyTool(i: number): void {
         }
         let changed = false;
         forEachBrushTile(i, idx => {
-            // Lock tiles: prevent overwriting existing content on same layer
-            if (lockTiles) {
-                const hasFg = world.fg[idx] !== 0;
-                const hasBg = world.bg[idx] !== 0;
-                if (layer === 0 && hasFg) return; // FG exists, can't place FG
-                if (layer === 1 && hasBg) return; // BG exists, can't place BG
-            }
             if (world.paint(idx, "place", layer, item.id)) changed = true;
             if (!placedItems.has(idx)) placedItems.set(idx, new Set());
             placedItems.get(idx)!.add(item.id);
         });
         if (changed) lastPainted = i;
+        // Update placed items display
+        updatePlacedItemsPanel();
     } else if (tool === "erase") {
-        const eraseFg = eraseFgChk?.checked ?? true;
-        const eraseBg = eraseBgChk?.checked ?? true;
-        if (!eraseFg && !eraseBg) return;
-        
         let changed = false;
         forEachBrushTile(i, idx => {
-            if (eraseFg && world.fg[idx] !== 0) {
-                world.setTile(idx, 0, 0);
-                changed = true;
-            }
-            if (eraseBg && world.bg[idx] !== 0) {
-                world.setTile(idx, 1, 0);
-                changed = true;
-            }
-            if (changed && placedItems.has(idx)) {
-                const remaining = new Set<number>();
-                if (eraseFg === false && world.fg[idx] !== 0) {
-                    // Keep FG items
-                    for (const id of placedItems.get(idx)!) {
-                        const it = itemById(id);
-                        if (it && it.layer === 0) remaining.add(id);
-                    }
-                }
-                if (eraseBg === false && world.bg[idx] !== 0) {
-                    // Keep BG items
-                    for (const id of placedItems.get(idx)!) {
-                        const it = itemById(id);
-                        if (it && it.layer === 1) remaining.add(id);
-                    }
-                }
-                if (remaining.size > 0) placedItems.set(idx, remaining);
-                else placedItems.delete(idx);
-            } else if (changed) {
-                placedItems.delete(idx);
-            }
+            if (world.paint(idx, "erase", 0, 0)) changed = true;
+            if (placedItems.has(idx)) placedItems.delete(idx);
         });
         if (changed) lastPainted = i;
+        // Update placed items display
+        updatePlacedItemsPanel();
     } else if (tool === "pick") {
         const fgId = world.fg[i];
         const bgId = world.bg[i];
@@ -407,6 +329,8 @@ function applyTool(i: number): void {
             status(`Dipilih: ${item.name}`);
         }
     }
+    // Update placed items display
+    updatePlacedItemsPanel();
 }
 
 canvas.addEventListener("pointerdown", e => {
@@ -541,6 +465,7 @@ async function boot(): Promise<void> {
         applyBedrock(true, false);
         renderer.fitToScreen();
         updateButtons();
+        updatePlacedItemsPanel();
         const dirt = itemById(2);
         if (dirt) void selectItem(dirt);
         status(`Siap: ${items.length} item placeable, world ${WORLD_W}x${WORLD_H}, bedrock y ${BEDROCK_ROWS[0]}-${BEDROCK_ROWS[1]}`);

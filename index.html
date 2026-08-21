@@ -17,15 +17,22 @@
                 <button data-tool="fill" class="tool" title="Fill (F)">Fill</button>
                 <button data-tool="pick" class="tool" title="Eyedropper (I)">Pick</button>
             </div>
+            <div class="actions" id="erase-options" style="display: none; align-items: center; gap: 8px;">
+                <label class="chk" title="Hapus Foreground"><input type="checkbox" id="erase-fg" checked /> FG</label>
+                <label class="chk" title="Hapus Background"><input type="checkbox" id="erase-bg" checked /> BG</label>
+            </div>
             <div class="actions">
                 <button id="btn-undo" title="Undo (Ctrl+Z)">Undo</button>
                 <button id="btn-redo" title="Redo (Ctrl+Y)">Redo</button>
-                <label class="chk brush" title="Ukuran brush (1-16)">
+                <label class="chk" title="Ukuran brush (1-16)">
                     Brush <span id="brush-val">1</span>
                     <input type="range" id="brush-size" min="1" max="16" step="1" value="1" />
                 </label>
                 <label class="chk"><input type="checkbox" id="chk-grid" checked /> Grid</label>
                 <label class="chk" title="Bedrock default di baris y 53-59"><input type="checkbox" id="chk-bedrock" checked /> Bedrock</label>
+                <label class="chk" title="Kunci tile yang sudah punya desain (FG/BG) agar tidak tertimpa"><input type="checkbox" id="chk-lock-tiles" /> Lock Tiles</label>
+                <label class="chk" title="Tampilkan Foreground"><input type="checkbox" id="chk-show-fg" checked /> FG</label>
+                <label class="chk" title="Tampilkan Background"><input type="checkbox" id="chk-show-bg" checked /> BG</label>
                 <button id="btn-fit" title="Fit world to screen (0)">Fit</button>
                 <span class="zoom-label" id="zoom-label">100%</span>
             </div>
@@ -53,27 +60,30 @@
                 <div id="cursor-info"></div>
             </section>
             <aside id="sidebar-right">
-                <h3>Selected</h3>
-                <div id="selected-item" class="sel-box">
-                    <canvas width="32" height="32"></canvas>
-                    <div>
-                        <div id="sel-name">-</div>
-                        <div id="sel-id">-</div>
+                <div class="sidebar-section">
+                    <h3>Selected</h3>
+                    <div id="selected-item" class="sel-box">
+                        <canvas width="32" height="32"></canvas>
+                        <div>
+                            <div id="sel-name">-</div>
+                            <div id="sel-id">-</div>
+                        </div>
                     </div>
                 </div>
-                <h3>Tile</h3>
-                <div id="tile-props">
-                    <div class="row"><span>x</span><b id="tp-x">-</b></div>
-                    <div class="row"><span>y</span><b id="tp-y">-</b></div>
-                    <div class="row"><span>foreground</span><b id="tp-fg">-</b></div>
-                    <div class="row"><span>background</span><b id="tp-bg">-</b></div>
-                    <div class="row"><span>index</span><b id="tp-idx">-</b></div>
+                <div class="sidebar-section">
+                    <h3>Tile</h3>
+                    <div id="tile-props">
+                        <div class="row"><span>x</span><b id="tp-x">-</b></div>
+                        <div class="row"><span>y</span><b id="tp-y">-</b></div>
+                        <div class="row"><span>foreground</span><b id="tp-fg">-</b></div>
+                        <div class="row"><span>background</span><b id="tp-bg">-</b></div>
+                        <div class="row"><span>index</span><b id="tp-idx">-</b></div>
+                    </div>
+                    <div class="row"><span>width</span><b>100</b></div>
+                    <div class="row"><span>height</span><b>60</b></div>
+                    <div class="row"><span>tiles</span><b>6000</b></div>
+                    <div class="row"><span>format</span><b>GTPS3 JSON</b></div>
                 </div>
-                <h3>World</h3>
-                <div class="row"><span>width</span><b>100</b></div>
-                <div class="row"><span>height</span><b>60</b></div>
-                <div class="row"><span>tiles</span><b>6000</b></div>
-                <div class="row"><span>format</span><b>GTPS3 JSON</b></div>
                 <div id="status-msg"></div>
             </aside>
         </main>

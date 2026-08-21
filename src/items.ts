@@ -47,42 +47,16 @@ export function isReady(): boolean {
     return ready;
 }
 
-function subsequenceScore(nameLower: string, q: string): number {
-    let qi = 0;
-    for (let i = 0; i < nameLower.length && qi < q.length; i++) {
-        if (nameLower[i] === q[qi]) qi++;
-    }
-    if (qi < q.length) return -1;
-    return qi * 100 + q.length;
-}
-
 export function searchItems(query: string, limit = 400): ItemEntry[] {
     const q = query.trim().toLowerCase();
     if (!q) return items.slice(0, limit);
+    if (q.length < 2) return [];
     if (/^\d+$/.test(q)) {
         const id = parseInt(q, 10);
         const exact = byId.get(id);
         if (exact) return [exact];
         return items.filter(i => String(i.id).startsWith(q)).slice(0, limit);
     }
-    const scored: { it: ItemEntry; s: number }[] = [];
-    for (const it of items) {
-        const nl = it.name.toLowerCase();
-        const idx = nl.indexOf(q);
-        let s: number;
-        if (idx === 0) s = 0;
-        else if (idx > 0) s = 100 + idx;
-        else {
-            const wordIdx = nl.split(" ").findIndex(wl => wl.startsWith(q));
-            if (wordIdx >= 0) s = 400 + wordIdx;
-            else {
-                const seq = subsequenceScore(nl, q);
-                if (seq < 0) continue;
-                s = 2000 + seq;
-            }
-        }
-        scored.push({ it, s });
-    }
-    scored.sort((a, b) => a.s - b.s || a.it.id - b.it.id);
-    return scored.slice(0, limit).map(x => x.it);
+    // Partial match: name contains query
+    return items.filter(it => it.name.toLowerCase().includes(q)).slice(0, limit);
 }

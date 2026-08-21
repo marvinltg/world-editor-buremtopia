@@ -31,6 +31,8 @@ export class WorldRenderer {
 
     vp: Viewport = { zoom: 0.25, offX: 0, offY: 0 };
     showGrid = true;
+    showFg = true;
+    showBg = true;
     hover: HoverState | null = null;
     selectedTile = -1;
     private renderQueued = false;
@@ -196,10 +198,14 @@ export class WorldRenderer {
         const y = ((i / WORLD_W) | 0) * TILE;
         const ctx = this.worldCtx;
         ctx.clearRect(x, y, TILE, TILE);
-        const bgId = w.bg[i];
-        if (bgId) this.blitId(ctx, bgId, x, y, i);
-        const fgId = w.fg[i];
-        if (fgId) this.blitId(ctx, fgId, x, y, i);
+        if (this.showBg) {
+            const bgId = w.bg[i];
+            if (bgId) this.blitId(ctx, bgId, x, y, i);
+        }
+        if (this.showFg) {
+            const fgId = w.fg[i];
+            if (fgId) this.blitId(ctx, fgId, x, y, i);
+        }
     }
 
     private blitId(ctx: CanvasRenderingContext2D, id: number, px: number, py: number, tileIdx: number): void {
@@ -316,6 +322,16 @@ export class WorldRenderer {
     setGrid(v: boolean): void {
         this.showGrid = v;
         this.requestRender();
+    }
+
+    setShowFg(v: boolean): void {
+        this.showFg = v;
+        this.redrawAll(currentWorld!);
+    }
+
+    setShowBg(v: boolean): void {
+        this.showBg = v;
+        this.redrawAll(currentWorld!);
     }
 
     setSelected(i: number): void {

@@ -3,6 +3,7 @@ import { atlasUrlFor, searchItems } from "./items";
 import { makeTileCanvas } from "./rttex";
 
 const PAGE_SIZE = 120;
+const TILE = 32;
 
 export class ItemBrowser {
     private listEl: HTMLElement;
@@ -16,6 +17,7 @@ export class ItemBrowser {
     private debouncer: number | null = null;
     private sentinel: HTMLElement;
     onSelect: ((item: ItemEntry) => void) | null = null;
+    private usedIds = new Set<number>();
 
     constructor(root: HTMLElement, onSelect: (item: ItemEntry) => void) {
         this.listEl = root.querySelector("#item-list")!;
