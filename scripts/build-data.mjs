@@ -8,6 +8,59 @@ const ITEMS_JSON = join(ROOT, "data", "items.json");
 const CACHE = join(ROOT, "data", "cache-items");
 const OUT_GEN = join(ROOT, "public", "gen");
 const OUT_RTTEX = join(ROOT, "public", "rttex");
+const OUT_WEATHER = join(OUT_GEN, "weather");
+
+// Layer cuaca: m = mode render ("tile" = ulang native, "cover" = skala penuhi canvas,
+// "hills" = ulang horizontal nempel dasar dengan tinggi hp * tinggi world), a = alpha.
+const WEATHER_DEFS = [
+    { id: 0, name: "Default", layers: [
+        { f: "b_skybg", m: "tile" },
+        { f: "b_hills3", m: "hills", hp: 0.6 },
+        { f: "b_hills2", m: "hills", hp: 0.45 },
+        { f: "b_hills1", m: "hills", hp: 0.3 }
+    ] },
+    { id: 1, name: "Sunset", layers: [
+        { f: "sunset", m: "tile" },
+        { f: "b_hills3", m: "hills", hp: 0.55, a: 0.9 },
+        { f: "b_hills2", m: "hills", hp: 0.42, a: 0.95 },
+        { f: "b_hills1", m: "hills", hp: 0.28 }
+    ] },
+    { id: 2, name: "Night", layers: [
+        { f: "night_back", m: "tile" },
+        { f: "b_hills3", m: "hills", hp: 0.55, a: 0.8 },
+        { f: "b_hills2", m: "hills", hp: 0.42, a: 0.85 },
+        { f: "b_hills1", m: "hills", hp: 0.28, a: 0.9 }
+    ] },
+    { id: 3, name: "Desert", layers: [
+        { f: "desert_sky", m: "tile" },
+        { f: "desert_hills2", m: "hills", hp: 0.48 },
+        { f: "desert_hills", m: "hills", hp: 0.32 }
+    ] },
+    { id: 7, name: "Mars", layers: [
+        { f: "mars_back", m: "tile" }
+    ] },
+    { id: 11, name: "Snowy", layers: [
+        { f: "icebg_skybg", m: "tile" },
+        { f: "icebg_3", m: "hills", hp: 0.52 },
+        { f: "icebg_4", m: "hills", hp: 0.42 },
+        { f: "icebg_1", m: "hills", hp: 0.3 }
+    ] },
+    { id: 14, name: "Undersea", layers: [
+        { f: "darkbluewater", m: "tile" },
+        { f: "water_ray", m: "tile", a: 0.25 }
+    ] },
+    { id: 32, name: "Jungle", layers: [
+        { f: "jungle_sky", m: "tile" },
+        { f: "jungle_hills", m: "hills", hp: 0.55 },
+        { f: "jungle_hills2", m: "hills", hp: 0.4 }
+    ] },
+    { id: 87, name: "Bedawang Nala", layers: [
+        { f: "bg_BN_sky", m: "tile" },
+        { f: "bg_BN_layer3", m: "cover", a: 0.9 },
+        { f: "bg_BN_layer2", m: "cover" },
+        { f: "bg_BN_layer1", m: "hills", hp: 0.35 }
+    ] }
+];
 
 const EXCLUDED_ACTIONS = new Set([0, 1, 4, 8, 19, 20, 37, 63, 72, 115, 129]);
 const BG_ACTIONS = new Set([18, 22, 23, 28]);
@@ -114,3 +167,39 @@ writeFileSync(join(OUT_GEN, "items_index.json"), JSON.stringify({
 writeFileSync(join(OUT_GEN, "atlas_index.json"), JSON.stringify(atlasIndex));
 
 console.log(`placeable: ${records.length} | atlases: ${Object.keys(atlasIndex).length} | missing: ${missingAtlas.length} ${missingAtlas.join(", ")}`);
+
+console.log("mengekstrak background weather...");
+mkdirSync(OUT_WEATHER, { recursive: true });
+const weatherOut = [];
+for (const wd of WEATHER_DEFS) {
+    const layers = [];
+    for (const L of wd.layers) {
+        const key = L.f.toLowerCase() + ".rttex";
+        const entry = byBase.get(key);
+        if (!entry) {
+            console.warn(`  weather ${wd.name}: asset ${key} tidak ada di cache, layer dilewati`);
+            continue;
+        }
+        const destName = L.f.replace(/[\\/]/g, "_") + ".rttex";
+        const dest = join(OUT_WEATHER, destName);
+        if (!existsSync(dest) || statSync(dest).size !== statSync(entry.path).size) {
+            writeFileSync(dest, readFileSync(entry.path));
+        }
+        const dec = decodeRttex(readFileSync(entry.path));
+        layers.push({
+            src: "gen/weather/" + destName,
+            m: L.m,
+            hp: L.hp ?? 0,
+            a: L.a ?? 1,
+            iw: dec.w,
+            ih: dec.h
+        });
+    }
+    if (!layers.length) {
+        console.warn(`  weather ${wd.name}: tidak ada layer valid, dilewati`);
+        continue;
+    }
+    weatherOut.push({ id: wd.id, name: wd.name, layers });
+}
+writeFileSync(join(OUT_GEN, "weather_index.json"), JSON.stringify({ v: 1, weathers: weatherOut }));
+console.log(`weather bg: ${weatherOut.length} cuaca | ${weatherOut.reduce((n, w) => n + w.layers.length, 0)} layer`);

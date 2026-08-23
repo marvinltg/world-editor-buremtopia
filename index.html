@@ -39,7 +39,7 @@
                     <input type="range" id="brush-size" min="1" max="16" step="1" value="1" />
                 </label>
                 <label class="chk"><input type="checkbox" id="chk-grid" checked /><span class="chk-box"></span> Grid</label>
-                <label class="chk" title="Bedrock default di baris y 53-59"><input type="checkbox" id="chk-bedrock" checked /><span class="chk-box"></span> Bedrock</label>
+                <label class="chk" title="Bedrock default di 7 baris terbawah world"><input type="checkbox" id="chk-bedrock" checked /><span class="chk-box"></span> Bedrock</label>
                 <label class="chk" title="Kunci tile yang sudah punya desain (FG/BG) agar tidak tertimpa"><input type="checkbox" id="chk-lock-tiles" /><span class="chk-box"></span> Lock</label>
                 <label class="chk" title="Tampilkan Foreground"><input type="checkbox" id="chk-show-fg" checked /><span class="chk-box"></span> FG</label>
                 <label class="chk" title="Tampilkan Background"><input type="checkbox" id="chk-show-bg" checked /><span class="chk-box"></span> BG</label>
@@ -81,6 +81,22 @@
                     </div>
                 </div>
                 <div class="sidebar-section">
+                    <h3>Ukuran World</h3>
+                    <div class="size-controls">
+                        <label title="Lebar world (tile)">W<input type="number" id="world-w" min="1" max="200" step="1" value="100" /></label>
+                        <span class="size-x">×</span>
+                        <label title="Tinggi world (tile)">H<input type="number" id="world-h" min="1" max="120" step="1" value="60" /></label>
+                        <button id="btn-resize" title="Terapkan ukuran world (default 100x60, maks 200x120)">Terapkan</button>
+                    </div>
+                    <div class="row"><span>maks</span><b>200 × 120</b></div>
+                    <div class="row"><span>default</span><b>100 × 60</b></div>
+                </div>
+                <div class="sidebar-section">
+                    <h3>Latar Weather</h3>
+                    <select id="weather-select" title="Background weather Growtopia dari cache"></select>
+                    <label class="chk" title="Pakai background weather asli dari cache, bukan kotak-kotak"><input type="checkbox" id="chk-weather-bg" checked /><span class="chk-box"></span> Aktif</label>
+                </div>
+                <div class="sidebar-section">
                     <h3>Tile</h3>
                     <div id="tile-props">
                         <div class="row"><span>x</span><b id="tp-x">-</b></div>
@@ -89,9 +105,8 @@
                         <div class="row"><span>background</span><b id="tp-bg">-</b></div>
                         <div class="row"><span>index</span><b id="tp-idx">-</b></div>
                     </div>
-                    <div class="row"><span>width</span><b>100</b></div>
-                    <div class="row"><span>height</span><b>60</b></div>
-                    <div class="row"><span>tiles</span><b>6000</b></div>
+                    <div class="row"><span>ukuran</span><b id="tp-size">100 × 60</b></div>
+                    <div class="row"><span>tiles</span><b id="tp-tiles">6000</b></div>
                     <div class="row"><span>format</span><b>GTPS3 JSON</b></div>
                 </div>
                 <div id="status-msg"></div>

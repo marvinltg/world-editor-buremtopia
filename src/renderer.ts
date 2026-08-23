@@ -1,11 +1,10 @@
 import type { ItemEntry } from "./types";
-import { TILE_COUNT, WORLD_H, WORLD_W, World } from "./world";
+import { World } from "./world";
 import { cropCache, findAtlas, makeTileCanvas } from "./rttex";
 import { atlasUrlFor, itemById } from "./items";
+import { WeatherBackground, WEATHER_NONE } from "./weather";
 
 const TILE = 32;
-const WORLD_PX_W = WORLD_W * TILE;
-const WORLD_PX_H = WORLD_H * TILE;
 
 export interface Viewport {
     zoom: number;
@@ -35,6 +34,7 @@ export class WorldRenderer {
     showBg = true;
     hover: HoverState | null = null;
     selectedTile = -1;
+    weather: WeatherBackground | null = null;
     private renderQueued = false;
     private pending = new Map<number, Set<number>>();
     private pattern: CanvasPattern | null = null;
@@ -42,31 +42,53 @@ export class WorldRenderer {
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
         this.ctx = canvas.getContext("2d")!;
-        this.worldCanvas.width = WORLD_PX_W;
-        this.worldCanvas.height = WORLD_PX_H;
         this.worldCtx = this.worldCanvas.getContext("2d")!;
         this.worldCtx.imageSmoothingEnabled = false;
-        this.gridCanvas.width = WORLD_PX_W;
-        this.gridCanvas.height = WORLD_PX_H;
         this.gridCtx = this.gridCanvas.getContext("2d")!;
-        this.buildGrid();
         this.buildBackdropPattern();
         new ResizeObserver(() => this.requestRender()).observe(canvas.parentElement!);
     }
 
+    get worldPxW(): number {
+        return (currentWorld?.w ?? 0) * TILE;
+    }
+
+    get worldPxH(): number {
+        return (currentWorld?.h ?? 0) * TILE;
+    }
+
+    ensureBackingStore(): void {
+        const w = currentWorld;
+        if (!w) return;
+        const pw = this.worldPxW;
+        const ph = this.worldPxH;
+        if (this.worldCanvas.width !== pw || this.worldCanvas.height !== ph) {
+            this.worldCanvas.width = pw;
+            this.worldCanvas.height = ph;
+            this.gridCanvas.width = pw;
+            this.gridCanvas.height = ph;
+            this.buildGrid();
+            if (this.weather) this.weather.invalidate();
+        }
+    }
+
     private buildGrid(): void {
+        const W = currentWorld?.w ?? 0;
+        const H = currentWorld?.h ?? 0;
+        const pw = W * TILE;
+        const ph = H * TILE;
         const g = this.gridCtx;
-        g.clearRect(0, 0, WORLD_PX_W, WORLD_PX_H);
+        g.clearRect(0, 0, pw, ph);
         g.strokeStyle = "rgba(255,255,255,0.12)";
         g.lineWidth = 1;
         g.beginPath();
-        for (let x = 0; x <= WORLD_W; x++) {
+        for (let x = 0; x <= W; x++) {
             g.moveTo(x * TILE + 0.5, 0);
-            g.lineTo(x * TILE + 0.5, WORLD_PX_H);
+            g.lineTo(x * TILE + 0.5, ph);
         }
-        for (let y = 0; y <= WORLD_H; y++) {
+        for (let y = 0; y <= H; y++) {
             g.moveTo(0, y * TILE + 0.5);
-            g.lineTo(WORLD_PX_W, y * TILE + 0.5);
+            g.lineTo(pw, y * TILE + 0.5);
         }
         g.stroke();
     }
@@ -94,6 +116,11 @@ export class WorldRenderer {
     }
 
     private render(): void {
+        const w = currentWorld;
+        this.ensureBackingStore();
+        if (!w) return;
+        this.weather?.ensure(this.worldPxW, this.worldPxH);
+
         const dpr = window.devicePixelRatio || 1;
         const cw = this.canvas.clientWidth;
         const ch = this.canvas.clientHeight;
@@ -102,6 +129,8 @@ export class WorldRenderer {
             this.canvas.width = cw * dpr;
             this.canvas.height = ch * dpr;
         }
+        const WORLD_PX_W = this.worldPxW;
+        const WORLD_PX_H = this.worldPxH;
         const ctx = this.ctx;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.fillStyle = "#0e1116";
@@ -110,7 +139,11 @@ export class WorldRenderer {
         ctx.save();
         ctx.translate(-offX * zoom, -offY * zoom);
         ctx.scale(zoom, zoom);
-        if (this.pattern) {
+        const weatherCanvas = this.weather && this.weather.currentId !== WEATHER_NONE ? this.weather.getCanvas() : null;
+        if (weatherCanvas) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.drawImage(weatherCanvas, 0, 0, WORLD_PX_W, WORLD_PX_H);
+        } else if (this.pattern) {
             ctx.fillStyle = this.pattern;
             ctx.fillRect(0, 0, WORLD_PX_W, WORLD_PX_H);
         }
@@ -123,11 +156,13 @@ export class WorldRenderer {
         ctx.strokeRect(-offX * zoom - 1, -offY * zoom - 1, WORLD_PX_W * zoom + 2, WORLD_PX_H * zoom + 2);
 
         if (this.selectedTile >= 0) {
-            const sx = this.selectedTile % WORLD_W;
-            const sy = (this.selectedTile / WORLD_W) | 0;
-            ctx.strokeStyle = "#4ea1ff";
-            ctx.lineWidth = 2;
-            ctx.strokeRect((sx * TILE - offX) * zoom, (sy * TILE - offY) * zoom, TILE * zoom, TILE * zoom);
+            const sx = this.selectedTile % w.w;
+            const sy = (this.selectedTile / w.w) | 0;
+            if (sx < w.w && sy < w.h) {
+                ctx.strokeStyle = "#4ea1ff";
+                ctx.lineWidth = 2;
+                ctx.strokeRect((sx * TILE - offX) * zoom, (sy * TILE - offY) * zoom, TILE * zoom, TILE * zoom);
+            }
         }
         if (this.hover) {
             const size = Math.max(1, this.hover.size);
@@ -136,24 +171,24 @@ export class WorldRenderer {
             const by = this.hover.y - half;
             const hx = bx * TILE;
             const hy = by * TILE;
-            const w = size * TILE;
+            const wd = size * TILE;
             if (this.hover.tool === "erase") {
                 ctx.strokeStyle = "rgba(255,80,80,0.9)";
                 ctx.lineWidth = 2;
-                ctx.strokeRect((hx - offX) * zoom, (hy - offY) * zoom, w * zoom, w * zoom);
+                ctx.strokeRect((hx - offX) * zoom, (hy - offY) * zoom, wd * zoom, wd * zoom);
             } else if (this.hover.item) {
                 ctx.fillStyle = "rgba(255,255,255,0.10)";
-                ctx.fillRect((hx - offX) * zoom, (hy - offY) * zoom, w * zoom, w * zoom);
+                ctx.fillRect((hx - offX) * zoom, (hy - offY) * zoom, wd * zoom, wd * zoom);
                 ctx.globalAlpha = 0.55;
-                this.drawItemAt(ctx, this.hover.item, (hx - offX) * zoom, (hy - offY) * zoom, w * zoom);
+                this.drawItemAt(ctx, this.hover.item, (hx - offX) * zoom, (hy - offY) * zoom, wd * zoom);
                 ctx.globalAlpha = 1;
                 ctx.strokeStyle = "rgba(255,255,255,0.5)";
                 ctx.lineWidth = 1;
-                ctx.strokeRect((hx - offX) * zoom, (hy - offY) * zoom, w * zoom, w * zoom);
+                ctx.strokeRect((hx - offX) * zoom, (hy - offY) * zoom, wd * zoom, wd * zoom);
             } else {
                 ctx.strokeStyle = "rgba(255,255,255,0.5)";
                 ctx.lineWidth = 1;
-                ctx.strokeRect((hx - offX) * zoom, (hy - offY) * zoom, w * zoom, w * zoom);
+                ctx.strokeRect((hx - offX) * zoom, (hy - offY) * zoom, wd * zoom, wd * zoom);
             }
         }
     }
@@ -185,17 +220,19 @@ export class WorldRenderer {
     }
 
     redrawAll(world: World): void {
-        this.worldCtx.clearRect(0, 0, WORLD_PX_W, WORLD_PX_H);
+        this.ensureBackingStore();
+        this.weather?.invalidate();
+        this.worldCtx.clearRect(0, 0, this.worldPxW, this.worldPxH);
         this.pending.clear();
-        for (let i = 0; i < TILE_COUNT; i++) this.drawTile(i);
+        for (let i = 0; i < world.tileCount; i++) this.drawTile(i);
         this.requestRender();
     }
 
     private drawTile(i: number): void {
         const w = currentWorld;
-        if (!w) return;
-        const x = (i % WORLD_W) * TILE;
-        const y = ((i / WORLD_W) | 0) * TILE;
+        if (!w || i >= w.tileCount) return;
+        const x = (i % w.w) * TILE;
+        const y = ((i / w.w) | 0) * TILE;
         const ctx = this.worldCtx;
         ctx.clearRect(x, y, TILE, TILE);
         if (this.showBg) {
@@ -274,23 +311,25 @@ export class WorldRenderer {
     }
 
     clientToTile(clientX: number, clientY: number): { x: number; y: number; i: number } | null {
+        const w = currentWorld;
+        if (!w) return null;
         const rect = this.canvas.getBoundingClientRect();
         const wx = (clientX - rect.left) / this.vp.zoom + this.vp.offX;
         const wy = (clientY - rect.top) / this.vp.zoom + this.vp.offY;
         const tx = Math.floor(wx / TILE);
         const ty = Math.floor(wy / TILE);
-        if (tx < 0 || tx >= WORLD_W || ty < 0 || ty >= WORLD_H) return null;
-        return { x: tx, y: ty, i: ty * WORLD_W + tx };
+        if (tx < 0 || tx >= w.w || ty < 0 || ty >= w.h) return null;
+        return { x: tx, y: ty, i: ty * w.w + tx };
     }
 
     fitToScreen(): void {
         const cw = this.canvas.clientWidth;
         const ch = this.canvas.clientHeight;
         if (!cw || !ch) return;
-        const zoom = Math.min(cw / WORLD_PX_W, ch / WORLD_PX_H) * 0.97;
+        const zoom = Math.min(cw / this.worldPxW, ch / this.worldPxH) * 0.97;
         this.vp.zoom = zoom;
-        this.vp.offX = -(cw / zoom - WORLD_PX_W) / 2;
-        this.vp.offY = -(ch / zoom - WORLD_PX_H) / 2;
+        this.vp.offX = -(cw / zoom - this.worldPxW) / 2;
+        this.vp.offY = -(ch / zoom - this.worldPxH) / 2;
         this.requestRender();
     }
 

@@ -1,7 +1,8 @@
-import { World, WORLD_H, WORLD_W, TILE_COUNT } from "./world";
+import { World, MAX_WORLD_W, MAX_WORLD_H } from "./world";
 import { WorldRenderer, bindWorld } from "./renderer";
 import { loadItems, atlasUrlFor, itemById } from "./items";
 import { makeTileCanvas } from "./rttex";
+import { loadWeatherIndex, getWeatherDefs, WeatherBackground, WEATHER_NONE } from "./weather";
 import { ItemBrowser } from "./ui";
 import { exportWorld, parseWorld, validateName } from "./serialize";
 import type { ItemEntry, Tool } from "./types";
@@ -19,7 +20,7 @@ world.onChange((indices, full) => {
 
 function hasUnsavedChanges(): boolean {
     if (world.undoDepth > 0 || world.redoDepth > 0) return true;
-    for (let i = 0; i < TILE_COUNT; i++) {
+    for (let i = 0; i < world.tileCount; i++) {
         if (world.fg[i] !== 0 || world.bg[i] !== 0) return true;
     }
     return false;
@@ -104,7 +105,7 @@ interface UsedItemInfo {
 function getUsedItemsWithCounts(): UsedItemInfo[] {
     const counts = new Map<number, { count: number; layers: Set<0 | 1> }>();
     
-    for (let i = 0; i < TILE_COUNT; i++) {
+    for (let i = 0; i < world.tileCount; i++) {
         const fgId = world.fg[i];
         const bgId = world.bg[i];
         
@@ -210,16 +211,94 @@ showBgChk.addEventListener("change", e => {
     renderer.setShowBg((e.target as HTMLInputElement).checked);
 });
 
+const sizeWInput = root.querySelector<HTMLInputElement>("#world-w")!;
+const sizeHInput = root.querySelector<HTMLInputElement>("#world-h")!;
+const btnResize = root.querySelector<HTMLButtonElement>("#btn-resize")!;
+const tpSize = root.querySelector<HTMLElement>("#tp-size")!;
+const tpTiles = root.querySelector<HTMLElement>("#tp-tiles")!;
+
+function updateWorldInfo(): void {
+    tpSize.textContent = `${world.w} × ${world.h}`;
+    tpTiles.textContent = String(world.tileCount);
+    sizeWInput.value = String(world.w);
+    sizeHInput.value = String(world.h);
+}
+
+function applySize(): void {
+    const nw = parseInt(sizeWInput.value, 10);
+    const nh = parseInt(sizeHInput.value, 10);
+    const cw = Number.isFinite(nw) ? Math.min(MAX_WORLD_W, Math.max(1, nw)) : world.w;
+    const chh = Number.isFinite(nh) ? Math.min(MAX_WORLD_H, Math.max(1, nh)) : world.h;
+    if (cw === world.w && chh === world.h) {
+        updateWorldInfo();
+        return;
+    }
+    if (hasUnsavedChanges() && !confirm(`Ubah ukuran world ke ${cw}x${chh}? Isi di luar area baru & undo/redo akan hilang.`)) {
+        updateWorldInfo();
+        return;
+    }
+    const changed = world.resize(cw, chh);
+    placedItems.clear();
+    if (!changed) return;
+    if (bedrockChk.checked) applyBedrock(true, false);
+    updateWorldInfo();
+    renderer.fitToScreen();
+    status(`Ukuran world: ${world.w} x ${world.h} (${world.tileCount} tile)`);
+}
+
+btnResize.addEventListener("click", applySize);
+
+const weatherSelect = root.querySelector<HTMLSelectElement>("#weather-select")!;
+const weatherChk = root.querySelector<HTMLInputElement>("#chk-weather-bg")!;
+const weatherBg = new WeatherBackground();
+weatherBg.onChange = () => renderer.requestRender();
+renderer.weather = weatherBg;
+
+function applyWeatherSelection(): void {
+    const id = parseInt(weatherSelect.value, 10);
+    const valid = getWeatherDefs().some(d => d.id === id);
+    weatherBg.setWeather(weatherChk.checked && valid ? id : WEATHER_NONE);
+}
+
+weatherSelect.addEventListener("change", () => {
+    if (weatherChk.checked) applyWeatherSelection();
+});
+
+weatherChk.addEventListener("change", () => {
+    applyWeatherSelection();
+});
+
+async function initWeatherOptions(): Promise<void> {
+    try {
+        await loadWeatherIndex();
+        weatherSelect.innerHTML = "";
+        for (const def of getWeatherDefs()) {
+            const opt = document.createElement("option");
+            opt.value = String(def.id);
+            opt.textContent = `${def.name} (${def.id})`;
+            weatherSelect.appendChild(opt);
+        }
+        weatherSelect.value = "0";
+    } catch (e) {
+        console.warn("weather index gagal dimuat", e);
+    }
+}
+
 const BEDROCK_ID = 8;
-const BEDROCK_ROWS: [number, number] = [53, 59];
+const BEDROCK_DEPTH = 7;
 const bedrockChk = root.querySelector<HTMLInputElement>("#chk-bedrock")!;
 
+function bedrockTopY(): number {
+    return Math.max(1, world.h - BEDROCK_DEPTH);
+}
+
 function applyBedrock(on: boolean, recordUndo: boolean): number {
+    const topY = bedrockTopY();
     if (recordUndo) world.beginOp();
     let changed = 0;
-    for (let y = BEDROCK_ROWS[0]; y <= BEDROCK_ROWS[1]; y++) {
-        for (let x = 0; x < WORLD_W; x++) {
-            const i = y * WORLD_W + x;
+    for (let y = topY; y < world.h; y++) {
+        for (let x = 0; x < world.w; x++) {
+            const i = y * world.w + x;
             if (on) {
                 world.setLocked(i, true);
                 if (world.fg[i] !== 0 && world.fg[i] !== BEDROCK_ID) continue;
@@ -242,8 +321,9 @@ function applyBedrock(on: boolean, recordUndo: boolean): number {
 }
 
 bedrockChk.addEventListener("change", () => {
+    const topY = bedrockTopY();
     const changed = applyBedrock(bedrockChk.checked, true);
-    status(bedrockChk.checked ? `Bedrock default dipasang (${changed} tile, y ${BEDROCK_ROWS[0]}-${BEDROCK_ROWS[1]})` : "Bedrock default dihapus");
+    status(bedrockChk.checked ? `Bedrock default dipasang (${changed} tile, y ${topY}-${world.h - 1})` : "Bedrock default dihapus");
 });
 root.querySelector("#btn-fit")!.addEventListener("click", () => { renderer.fitToScreen(); updateButtons(); });
 root.querySelector("#btn-clear")!.addEventListener("click", () => {
@@ -259,7 +339,7 @@ exportBtn.addEventListener("click", () => {
     if (err) { status(err, true); nameInput.focus(); return; }
     try {
         const { blob, filename } = exportWorld(
-            { name, fg: world.fg, bg: world.bg, extra: world.extra },
+            { name, w: world.w, h: world.h, fg: world.fg, bg: world.bg, extra: world.extra },
             { worldName: name }
         );
         const url = URL.createObjectURL(blob);
@@ -268,7 +348,7 @@ exportBtn.addEventListener("click", () => {
         a.download = filename;
         a.click();
         URL.revokeObjectURL(url);
-        status(`Exported ${filename} (${(blob.size / 1024).toFixed(1)} KB, ${TILE_COUNT} tile)`);
+        status(`Exported ${filename} (${(blob.size / 1024).toFixed(1)} KB, ${world.w}x${world.h}, ${world.tileCount} tile)`);
     } catch (e) {
         status((e as Error).message, true);
     }
@@ -283,10 +363,14 @@ importInput.addEventListener("change", async () => {
     try {
         const text = await file.text();
         const { state, stats } = parseWorld(text);
-        world.replaceWhole(state.fg, state.bg, state.extra, state.name || file.name.replace(/_?\.json$/i, "").toUpperCase());
+        world.replaceWhole(state.fg, state.bg, state.extra, state.name || file.name.replace(/_?\.json$/i, "").toUpperCase(), state.w, state.h);
+        placedItems.clear();
+        if (bedrockChk.checked) applyBedrock(true, false);
         const fromFile = file.name.replace(/_?\.json$/i, "");
         if (/^[A-Za-z0-9_-]+$/.test(fromFile) && fromFile.length <= 24) nameInput.value = fromFile.toUpperCase();
-        status(`Imported ${file.name}: ${stats.fgCount} fg, ${stats.bgCount} bg, ${stats.extraCount} extra`);
+        updateWorldInfo();
+        renderer.fitToScreen();
+        status(`Imported ${file.name}: ${stats.w}x${stats.h}, ${stats.fgCount} fg, ${stats.bgCount} bg, ${stats.extraCount} extra`);
     } catch (e) {
         status((e as Error).message, true);
     }
@@ -317,8 +401,8 @@ function updateTileInfo(i: number | null): void {
         tpX.textContent = tpY.textContent = tpFg.textContent = tpBg.textContent = tpIdx.textContent = "-";
         return;
     }
-    tpX.textContent = String(i % WORLD_W);
-    tpY.textContent = String((i / WORLD_W) | 0);
+    tpX.textContent = String(i % world.w);
+    tpY.textContent = String((i / world.w) | 0);
     tpFg.textContent = describeId(world.fg[i]);
     tpBg.textContent = describeId(world.bg[i]);
     tpIdx.textContent = String(i);
@@ -330,21 +414,21 @@ function forEachBrushTile(i: number, fn: (idx: number) => void): void {
         return;
     }
     const half = Math.floor((brushSize - 1) / 2);
-    const cx = i % WORLD_W;
-    const cy = (i / WORLD_W) | 0;
+    const cx = i % world.w;
+    const cy = (i / world.w) | 0;
     for (let dy = -half; dy < brushSize - half; dy++) {
         for (let dx = -half; dx < brushSize - half; dx++) {
             const x = cx + dx;
             const y = cy + dy;
-            if (x < 0 || x >= WORLD_W || y < 0 || y >= WORLD_H) continue;
-            fn(y * WORLD_W + x);
+            if (x < 0 || x >= world.w || y < 0 || y >= world.h) continue;
+            fn(y * world.w + x);
         }
     }
 }
 
 function applyTool(i: number): void {
     if (world.isLocked(i)) {
-        fail(`Tile (${i % WORLD_W}, ${(i / WORLD_W) | 0}) terkunci: bedrock default aktif, matikan toggle Bedrock untuk mengubahnya`);
+        fail(`Tile (${i % world.w}, ${(i / world.w) | 0}) terkunci: bedrock default aktif, matikan toggle Bedrock untuk mengubahnya`);
         return;
     }
     const lockTiles = lockTilesChk?.checked ?? false;
@@ -550,15 +634,21 @@ window.addEventListener("keyup", e => {
 async function boot(): Promise<void> {
     try {
         browser.setStatus("Mengunduh index item...");
-        const { items } = await loadItems(m => browser.setStatus(m));
+        const [{ items }] = await Promise.all([
+            loadItems(m => browser.setStatus(m)),
+            initWeatherOptions().then(() => {
+                applyWeatherSelection();
+            })
+        ]);
         browser.setStats(items.length);
         browser.search("");
         applyBedrock(true, false);
+        updateWorldInfo();
         renderer.fitToScreen();
         updateButtons();
         const dirt = itemById(2);
         if (dirt) void selectItem(dirt);
-        status(`Siap: ${items.length} item placeable, world ${WORLD_W}x${WORLD_H}, bedrock y ${BEDROCK_ROWS[0]}-${BEDROCK_ROWS[1]}`);
+        status(`Siap: ${items.length} item placeable, world ${world.w}x${world.h} (maks ${MAX_WORLD_W}x${MAX_WORLD_H}), bedrock y ${bedrockTopY()}-${world.h - 1}`);
     } catch (e) {
         browser.setStatus("Gagal memuat: " + (e as Error).message);
         status((e as Error).message, true);

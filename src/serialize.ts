@@ -1,8 +1,11 @@
 import type { TileExtra, WorldState } from "./world";
+import {
+    DEFAULT_WORLD_W,
+    DEFAULT_WORLD_H,
+    MAX_WORLD_W,
+    MAX_WORLD_H
+} from "./world";
 
-export const WORLD_W = 100;
-export const WORLD_H = 60;
-export const TILE_COUNT = WORLD_W * WORLD_H;
 export const FORMAT_VERSION = 26;
 
 const DEFAULTS: Record<string, unknown> = {
@@ -43,9 +46,9 @@ function sortedObject(entries: [string, unknown][]): Record<string, unknown> {
     return Object.fromEntries(sorted);
 }
 
-function blocksArray(fg: Uint16Array, bg: Uint16Array, extra: Map<number, TileExtra>): unknown[] {
-    const out: unknown[] = new Array(TILE_COUNT);
-    for (let i = 0; i < TILE_COUNT; i++) {
+function blocksArray(fg: Uint16Array, bg: Uint16Array, extra: Map<number, TileExtra>, tileCount: number): unknown[] {
+    const out: unknown[] = new Array(tileCount);
+    for (let i = 0; i < tileCount; i++) {
         const e = extra.get(i);
         const entries: [string, unknown][] = [];
         if (e?.raw) {
@@ -71,17 +74,23 @@ export function exportWorld(state: WorldState, opts: ExportOptions): ExportResul
     const errors: string[] = [];
     const nameErr = validateName(opts.worldName);
     if (nameErr) errors.push(nameErr);
-    if (state.fg.length !== TILE_COUNT || state.bg.length !== TILE_COUNT) {
-        errors.push(`Ukuran tile tidak valid: ${state.fg.length}/${state.bg.length} (harus ${TILE_COUNT})`);
+
+    const w = state.w > 0 ? state.w : DEFAULT_WORLD_W;
+    const h = state.h > 0 ? state.h : DEFAULT_WORLD_H;
+    if (w < 1 || w > MAX_WORLD_W) errors.push(`Lebar world ${w} di luar batas 1-${MAX_WORLD_W}`);
+    if (h < 1 || h > MAX_WORLD_H) errors.push(`Tinggi world ${h} di luar batas 1-${MAX_WORLD_H}`);
+    const tileCount = w * h;
+    if (state.fg.length !== tileCount || state.bg.length !== tileCount) {
+        errors.push(`Ukuran tile tidak valid: ${state.fg.length}/${state.bg.length} (harus ${tileCount} = ${w}x${h})`);
     }
-    for (let i = 0; i < TILE_COUNT; i++) {
+    for (let i = 0; i < Math.min(state.fg.length, tileCount); i++) {
         if (state.fg[i] > 0xFFFF || state.bg[i] > 0xFFFF) {
             errors.push(`ID item di tile ${i} melewati batas uint16`);
             break;
         }
     }
     for (const [i] of state.extra) {
-        if (i < 0 || i >= TILE_COUNT) {
+        if (i < 0 || i >= tileCount) {
             errors.push(`Extra data di index ${i} di luar jangkauan world`);
             break;
         }
@@ -92,7 +101,7 @@ export function exportWorld(state: WorldState, opts: ExportOptions): ExportResul
     const doc: Record<string, unknown> = {
         admins: [],
         b: DEFAULTS.b,
-        blocks: blocksArray(state.fg, state.bg, state.extra),
+        blocks: blocksArray(state.fg, state.bg, state.extra, tileCount),
         bulletin: [],
         cc_s: [],
         cctv: [],
@@ -103,6 +112,8 @@ export function exportWorld(state: WorldState, opts: ExportOptions): ExportResul
         g: DEFAULTS.g,
         guild_world_id: DEFAULTS.guild_world_id,
         machine: [],
+        max_x: w,
+        max_y: h,
         music_bpm: DEFAULTS.music_bpm,
         n_b: DEFAULTS.n_b,
         npc: [],
@@ -122,6 +133,8 @@ export function exportWorld(state: WorldState, opts: ExportOptions): ExportResul
 
 export interface ImportStats {
     name: string;
+    w: number;
+    h: number;
     tiles: number;
     fgCount: number;
     bgCount: number;
@@ -136,6 +149,34 @@ function isGtpsWorld(obj: unknown): obj is Record<string, unknown> {
     return Array.isArray(o.blocks);
 }
 
+function inferDimensions(count: number, doc: Record<string, unknown>): { w: number; h: number } {
+    const mx = typeof doc.max_x === "number" ? doc.max_x : 0;
+    const my = typeof doc.max_y === "number" ? doc.max_y : 0;
+    if (mx >= 1 && mx <= MAX_WORLD_W && my >= 1 && my <= MAX_WORLD_H && mx * my === count) {
+        return { w: mx, h: my };
+    }
+    // Server GTPS3 memakai lebar tetap 100 (max_y = size / 100), coba itu dulu.
+    if (count % DEFAULT_WORLD_W === 0 && count / DEFAULT_WORLD_W <= MAX_WORLD_H) {
+        return { w: DEFAULT_WORLD_W, h: count / DEFAULT_WORLD_W };
+    }
+    let bestW = 0;
+    let bestH = 0;
+    let bestScore = Infinity;
+    for (let w = 1; w <= MAX_WORLD_W; w++) {
+        if (count % w !== 0) continue;
+        const h = count / w;
+        if (h < 1 || h > MAX_WORLD_H) continue;
+        const score = Math.abs(w - DEFAULT_WORLD_W) + Math.abs(h - DEFAULT_WORLD_H);
+        if (score < bestScore) {
+            bestScore = score;
+            bestW = w;
+            bestH = h;
+        }
+    }
+    if (!bestW) throw new Error(`Jumlah tile ${count} tidak bisa dibagi menjadi ukuran world valid (${DEFAULT_WORLD_W}x${DEFAULT_WORLD_H} default, maksimal ${MAX_WORLD_W}x${MAX_WORLD_H})`);
+    return { w: bestW, h: bestH };
+}
+
 export function parseWorld(text: string): { state: WorldState; stats: ImportStats } {
     let doc: unknown;
     try {
@@ -146,17 +187,15 @@ export function parseWorld(text: string): { state: WorldState; stats: ImportStat
     if (!isGtpsWorld(doc)) throw new Error('Format tidak dikenali: harus berisi array "blocks" (format GTPS3 world JSON)');
 
     const blocks = doc.blocks as unknown[];
-    if (blocks.length !== TILE_COUNT) {
-        throw new Error(`Jumlah tile ${blocks.length} tidak sesuai, harus ${TILE_COUNT} (100x60)`);
-    }
+    const { w, h } = inferDimensions(blocks.length, doc);
 
-    const fg = new Uint16Array(TILE_COUNT);
-    const bg = new Uint16Array(TILE_COUNT);
+    const fg = new Uint16Array(w * h);
+    const bg = new Uint16Array(w * h);
     const extra = new Map<number, TileExtra>();
     let fgCount = 0;
     let bgCount = 0;
 
-    for (let i = 0; i < TILE_COUNT; i++) {
+    for (let i = 0; i < blocks.length; i++) {
         const raw = blocks[i];
         if (!raw || typeof raw !== "object") continue;
         const b = raw as Record<string, unknown>;
@@ -191,7 +230,7 @@ export function parseWorld(text: string): { state: WorldState; stats: ImportStat
     let name = "";
     if (typeof doc.owner === "string" && doc.owner) name = doc.owner;
     return {
-        state: { name, fg, bg, extra },
-        stats: { name, tiles: TILE_COUNT, fgCount, bgCount, extraCount: extra.size }
+        state: { name, w, h, fg, bg, extra },
+        stats: { name, w, h, tiles: w * h, fgCount, bgCount, extraCount: extra.size }
     };
 }
