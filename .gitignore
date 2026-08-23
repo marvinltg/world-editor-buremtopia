@@ -3,3 +3,4 @@ scripts/serialize.test.mjs
 scripts/world.test.mjs
 project.md
 .gitignore
+data/cache-items/*
