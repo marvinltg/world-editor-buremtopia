@@ -2,9 +2,8 @@ import { World, MAX_WORLD_W, MAX_WORLD_H } from "./world";
 import { WorldRenderer, bindWorld } from "./renderer";
 import { loadItems, atlasUrlFor, itemById } from "./items";
 import { makeTileCanvas } from "./rttex";
-import { loadWeatherIndex, getWeatherDefs, WeatherBackground, WEATHER_NONE } from "./weather";
 import { ItemBrowser } from "./ui";
-import { exportWorld, parseWorld, validateName } from "./serialize";
+import { exportWorld, parseWorld, validateName, exportLuaScriptWorld, importLuaScriptWorld } from "./serialize";
 import type { ItemEntry, Tool } from "./types";
 
 const root = document.getElementById("app")!;
@@ -248,48 +247,11 @@ function applySize(): void {
 
 btnResize.addEventListener("click", applySize);
 
-const weatherSelect = root.querySelector<HTMLSelectElement>("#weather-select")!;
-const weatherChk = root.querySelector<HTMLInputElement>("#chk-weather-bg")!;
-const weatherBg = new WeatherBackground();
-weatherBg.onChange = () => renderer.requestRender();
-renderer.weather = weatherBg;
-
-function applyWeatherSelection(): void {
-    const id = parseInt(weatherSelect.value, 10);
-    const valid = getWeatherDefs().some(d => d.id === id);
-    weatherBg.setWeather(weatherChk.checked && valid ? id : WEATHER_NONE);
-}
-
-weatherSelect.addEventListener("change", () => {
-    if (weatherChk.checked) applyWeatherSelection();
-});
-
-weatherChk.addEventListener("change", () => {
-    applyWeatherSelection();
-});
-
-async function initWeatherOptions(): Promise<void> {
-    try {
-        await loadWeatherIndex();
-        weatherSelect.innerHTML = "";
-        for (const def of getWeatherDefs()) {
-            const opt = document.createElement("option");
-            opt.value = String(def.id);
-            opt.textContent = `${def.name} (${def.id})`;
-            weatherSelect.appendChild(opt);
-        }
-        weatherSelect.value = "0";
-    } catch (e) {
-        console.warn("weather index gagal dimuat", e);
-    }
-}
-
-const BEDROCK_ID = 8;
-const BEDROCK_DEPTH = 7;
+// Bedrock
 const bedrockChk = root.querySelector<HTMLInputElement>("#chk-bedrock")!;
 
 function bedrockTopY(): number {
-    return Math.max(1, world.h - BEDROCK_DEPTH);
+    return Math.max(1, world.h - 7);
 }
 
 function applyBedrock(on: boolean, recordUndo: boolean): number {
@@ -301,13 +263,13 @@ function applyBedrock(on: boolean, recordUndo: boolean): number {
             const i = y * world.w + x;
             if (on) {
                 world.setLocked(i, true);
-                if (world.fg[i] !== 0 && world.fg[i] !== BEDROCK_ID) continue;
-                if (world.fg[i] === BEDROCK_ID) continue;
-                world.setTile(i, 0, BEDROCK_ID);
+                if (world.fg[i] !== 0 && world.fg[i] !== 8) continue;
+                if (world.fg[i] === 8) continue;
+                world.setTile(i, 0, 8);
                 changed++;
             } else {
                 world.setLocked(i, false);
-                if (world.fg[i] !== BEDROCK_ID) continue;
+                if (world.fg[i] !== 8) continue;
                 world.setTile(i, 0, 0);
                 changed++;
             }
@@ -352,6 +314,91 @@ exportBtn.addEventListener("click", () => {
     } catch (e) {
         status((e as Error).message, true);
     }
+});
+
+// Lua-script world export button and file input
+const luaExportBtn = root.querySelector<HTMLButtonElement>("#btn-lua-export")!;
+const luaFileInput = root.querySelector<HTMLInputElement>("#lua-file-input")!;
+luaExportBtn.addEventListener("click", () => {
+    luaFileInput.click();
+});
+luaFileInput.addEventListener("change", async () => {
+    const file = luaFileInput.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".txt")) {
+        status("File harus berekstensi .txt", true);
+        luaFileInput.value = "";
+        return;
+    }
+    try {
+        const text = await file.text();
+        const content = exportLuaScriptWorld(world);
+        const blob = new Blob([content], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${world.name}_${world.w}x${world.h}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+        status(`Exported ${a.download} (${(blob.size / 1024).toFixed(1)} KB)`);
+    } catch (e) {
+        status((e as Error).message, true);
+    }
+    luaFileInput.value = "";
+});
+
+// Lua-script world import button and file input
+const luaImportBtn = root.querySelector<HTMLButtonElement>("#btn-lua-import")!;
+const luaImportFileInput = root.querySelector<HTMLInputElement>("#lua-import-file")!;
+luaImportBtn.addEventListener("click", () => {
+    luaImportFileInput.click();
+});
+luaImportFileInput.addEventListener("change", async () => {
+    const file = luaImportFileInput.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".txt")) {
+        status("File harus berekstensi .txt", true);
+        luaImportFileInput.value = "";
+        return;
+    }
+    try {
+        const text = await file.text();
+        const state = importLuaScriptWorld(text);
+        world.replaceWhole(state.fg, state.bg, state.extra, state.name || "IMPORTED", state.w, state.h);
+        placedItems.clear();
+        if (bedrockChk.checked) applyBedrock(true, false);
+        const fromFile = file.name.replace(/_?\.txt$/i, "");
+        if (/^[A-Za-z0-9_-]+$/.test(fromFile) && fromFile.length <= 24) nameInput.value = fromFile.toUpperCase();
+        updateWorldInfo();
+        renderer.fitToScreen();
+        status(`Imported ${file.name}: ${state.w}x${state.h}, ${world.tileCount} tile`);
+    } catch (e) {
+        status((e as Error).message, true);
+    }
+    luaImportFileInput.value = "";
+});
+
+// JPG export functionality
+const jpgExportBtn = root.querySelector<HTMLButtonElement>("#btn-jpg-export")!;
+jpgExportBtn.addEventListener("click", () => {
+    // Render world to canvas if needed
+    renderer.requestRender();
+    // Wait a frame for rendering to complete
+    setTimeout(() => {
+        const canvas = renderer.canvas;
+        if (!canvas || canvas.width === 0 || canvas.height === 0) {
+            status("Gagal: canvas tidak valid", true);
+            return;
+        }
+        // Convert to JPEG
+        const dataURL = canvas.toDataURL("image/jpeg", 0.92);
+        const link = document.createElement("a");
+        link.href = dataURL;
+        link.download = `${world.name}_${world.w}x${world.h}.jpg`;
+        link.click();
+        URL.revokeObjectURL(dataURL);
+        status(`Exported JPG: ${world.w}x${world.h} (${((dataURL.length - 22) / 1024).toFixed(1)} KB)`);
+    }, 100);
 });
 
 const importInput = root.querySelector<HTMLInputElement>("#file-import")!;
@@ -636,9 +683,6 @@ async function boot(): Promise<void> {
         browser.setStatus("Mengunduh index item...");
         const [{ items }] = await Promise.all([
             loadItems(m => browser.setStatus(m)),
-            initWeatherOptions().then(() => {
-                applyWeatherSelection();
-            })
         ]);
         browser.setStats(items.length);
         browser.search("");

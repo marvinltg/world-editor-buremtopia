@@ -141,6 +141,106 @@ export interface ImportStats {
     extraCount: number;
 }
 
+// Simplified Lua script tile - just id,x,y format
+export interface LuaScriptTile {
+    i: number;   // tile index
+    id: number;  // item ID
+    layer: 0 | 1; // 0 = foreground, 1 = background
+}
+
+// Parse a single line like "7444,0,7" or "BG:728,0,18"
+function parseLuaScriptLine(line: string): LuaScriptTile | null {
+    let trimmed = line.trim();
+    if (!trimmed) return null;
+
+    // Handle BG: prefix for background items
+    const bgPrefix = trimmed.startsWith("BG:");
+    if (bgPrefix) trimmed = trimmed.substring(3).trim();
+
+    const parts = trimmed.split(",");
+    if (parts.length < 3) return null;
+
+    const id = parseInt(parts[0].trim(), 10);
+    if (isNaN(id)) return null;
+
+    const x = parseInt(parts[1].trim(), 10);
+    const y = parseInt(parts[2].trim(), 10);
+    if (isNaN(x) || isNaN(y)) return null;
+
+    const i = y * 100 + x; // assuming world width 100, will be validated later
+    const layer = bgPrefix ? 1 : 0;
+
+    return { i, id, layer };
+}
+
+// Parse entire Lua script world text into WorldState
+export function parseLuaScriptWorld(text: string): { state: WorldState; tiles: LuaScriptTile[] } {
+    const lines = text.split("\n").filter((l: string) => l.trim() !== "");
+    const tiles: LuaScriptTile[] = [];
+
+    // Fixed world dimensions for Lua script format
+    const maxX = 100; // DEFAULT_WORLD_W
+    const maxY = 60;  // DEFAULT_WORLD_H
+    const tileCount = maxX * maxY;
+
+    const fg = new Uint16Array(tileCount).fill(0);
+    const bg = new Uint16Array(tileCount).fill(0);
+
+    for (const line of lines) {
+        const tile = parseLuaScriptLine(line);
+        if (!tile) continue;
+        if (tile.i < 0 || tile.i >= tileCount) continue;
+
+        if (tile.layer === 0) {
+            fg[tile.i] = tile.id;
+        } else {
+            bg[tile.i] = tile.id;
+        }
+
+        tiles.push(tile);
+    }
+
+    return {
+        state: { name: "START", w: maxX, h: maxY, fg, bg, extra: new Map() },
+        tiles
+    };
+}
+
+// Export world state as Lua script text format (id,x,y)
+export function exportLuaScriptWorld(state: WorldState): string {
+    const lines: string[] = [];
+    const w = state.w > 0 ? state.w : 100;
+    const h = state.h > 0 ? state.h : 60;
+
+    // Export foreground tiles
+    for (let i = 0; i < state.fg.length; i++) {
+        const id = state.fg[i];
+        if (id !== 0) {
+            const x = i % w;
+            const y = (i / w) | 0;
+            lines.push(`${id},${x},${y}`);
+        }
+    }
+
+    // Export background tiles
+    for (let i = 0; i < state.bg.length; i++) {
+        const id = state.bg[i];
+        if (id !== 0) {
+            const x = i % w;
+            const y = (i / w) | 0;
+            lines.push(`BG:${id},${x},${y}`);
+        }
+    }
+
+    return lines.join("\n");
+}
+
+// Import from Lua script text format
+export function importLuaScriptWorld(text: string): WorldState {
+    const { state } = parseLuaScriptWorld(text);
+    return state;
+}
+
 const KNOWN_BLOCK_KEYS = new Set(["f", "b", "t", "dd", "di", "o", "fl"]);
 
 function isGtpsWorld(obj: unknown): obj is Record<string, unknown> {

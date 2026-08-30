@@ -4,3 +4,4 @@ scripts/world.test.mjs
 project.md
 .gitignore
 data/cache-items/*
+lua-script/
